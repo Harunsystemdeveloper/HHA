@@ -8,6 +8,7 @@ import EmptyState from '../components/EmptyState';
 import ConfigAlert from '../components/ConfigAlert';
 import SearchBar from '../components/SearchBar';
 import FilterChips from '../components/FilterChips';
+import { demoPosts } from '../mock/postsDemo';
 
 const ALL: Category = 'Alla';
 const CATEGORIES: Category[] = [ALL, ...CAT_LIST];
@@ -20,6 +21,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | number | null>(null);
+  const [usingDemo, setUsingDemo] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -89,13 +91,23 @@ export default function Home() {
           <span>Filtrera efter kategori</span>
         </div>
         <FilterChips active={active} onChange={setActive} />
+        {(!loading && (error || posts.length === 0) && !usingDemo) && (
+          <div className="mt-3">
+            <button
+              onClick={() => { setPosts(demoPosts); setUsingDemo(true); setError(''); }}
+              className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            >
+              Visa demo‑inlägg
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Status */}
       {loading && (
         <div className="rounded-xl bg-white/60 p-3 text-sm text-gray-700 shadow-soft">Laddar…</div>
       )}
-      {error && !loading && <ConfigAlert message={error} />}
+      {error && !loading && !usingDemo && <ConfigAlert message={error} />}
 
       {/* Counter */}
       {!loading && !error && (
