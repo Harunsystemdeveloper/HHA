@@ -1,5 +1,5 @@
-import FileUpload from './components/FileUpload';
 import Header from './components/Header';
+import Home from './pages/Home';
 import './App.css';
 
 export default function App() {
@@ -7,8 +7,7 @@ export default function App() {
     <div className="min-h-screen">
       <Header />
       <main className="mx-auto max-w-6xl p-4">
-        {/* Temporary content until board pages are added */}
-        <FileUpload />
+        <Home />
       </main>
     </div>
   );
