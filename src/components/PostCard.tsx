@@ -23,6 +23,8 @@ function timeAgo(iso?: string) {
   return d.toLocaleDateString('sv-SE');
 }
 
+import CategoryBadge from './CategoryBadge';
+
 export default function PostCard(props: PostCardProps) {
   const { title, category, description, authorName, authorAvatarUrl, createdAt, imageUrl } = props;
 
@@ -35,9 +37,7 @@ export default function PostCard(props: PostCardProps) {
       <div className="p-4">
         <div className="mb-2 flex items-start justify-between gap-3">
           <h3 className="text-[17px] font-semibold leading-snug text-gray-900">{title}</h3>
-          <span className="ml-auto inline-flex shrink-0 items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-600/20">
-            {category}
-          </span>
+          <CategoryBadge category={category} className="ml-auto" />
         </div>
 
         <p className="text-sm text-gray-700">
@@ -61,4 +61,3 @@ export default function PostCard(props: PostCardProps) {
     </article>
   );
 }
-

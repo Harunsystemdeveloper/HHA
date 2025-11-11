@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getPosts } from '../api/posts';
 import PostCard from '../components/PostCard';
 import type { Category, Post } from '../types';
 import { CATEGORIES as CAT_LIST } from '../types';
+import EmptyState from '../components/EmptyState';
 
 const ALL: Category = 'Alla';
 const CATEGORIES: Category[] = [ALL, ...CAT_LIST];
 
 export default function Home() {
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<Category>(ALL);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -48,7 +51,7 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
-      {/* Search */}
+      {/* Search + action */}
       <div className="rounded-2xl border border-purple-200/60 bg-white/60 p-3 shadow-soft">
         <div className="relative">
           <input
@@ -62,6 +65,14 @@ export default function Home() {
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             Sök
+          </button>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => navigate('/create')}
+            className="rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm font-medium text-brand-700 shadow-sm hover:bg-brand-50"
+          >
+            + Skapa inlägg
           </button>
         </div>
       </div>
@@ -102,11 +113,15 @@ export default function Home() {
 
       {/* Grid */}
       {!loading && !error && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((p) => (
-            <PostCard key={p.id} {...p} />
-          ))}
-        </div>
+        filtered.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((p) => (
+              <PostCard key={p.id} {...p} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState />
+        )
       )}
     </div>
   );
