@@ -1,5 +1,6 @@
 import type { Category } from '../types';
 import { CATEGORIES as CAT_LIST } from '../types';
+import { getChipClasses } from '../styles/categoryStyles';
 
 type Props = {
   active: Category;
@@ -13,7 +14,7 @@ export default function FilterChips({ active, onChange }: Props) {
       {all.map((c) => (
         <button
           key={c}
-          className={`chip ${active === c ? 'chip-active' : 'chip-inactive'}`}
+          className={getChipClasses(c, active === c)}
           onClick={() => onChange(c)}
         >
           {c}
@@ -22,4 +23,3 @@ export default function FilterChips({ active, onChange }: Props) {
     </div>
   );
 }
-

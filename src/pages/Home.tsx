@@ -5,6 +5,7 @@ import PostCard from '../components/PostCard';
 import type { Category, Post } from '../types';
 import { CATEGORIES as CAT_LIST } from '../types';
 import EmptyState from '../components/EmptyState';
+import ConfigAlert from '../components/ConfigAlert';
 import SearchBar from '../components/SearchBar';
 import FilterChips from '../components/FilterChips';
 
@@ -94,9 +95,7 @@ export default function Home() {
       {loading && (
         <div className="rounded-xl bg-white/60 p-3 text-sm text-gray-700 shadow-soft">Laddar…</div>
       )}
-      {error && !loading && (
-        <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700 shadow-soft">{error}</div>
-      )}
+      {error && !loading && <ConfigAlert message={error} />}
 
       {/* Counter */}
       {!loading && !error && (

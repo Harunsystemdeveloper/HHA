@@ -1,4 +1,5 @@
 import Header from './components/Header';
+import Footer from './components/Footer';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import './App.css';
 
@@ -38,6 +39,7 @@ export default function App() {
       <main className="mx-auto max-w-6xl p-4">
         <Outlet />
       </main>
+      <Footer />
     </div>
   );
 }
