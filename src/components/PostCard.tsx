@@ -7,6 +7,8 @@ type PostCardProps = {
   authorAvatarUrl?: string | null;
   createdAt?: string; // ISO string
   imageUrl?: string | null;
+  onDelete?: () => void;
+  deleting?: boolean;
 };
 
 function timeAgo(iso?: string) {
@@ -26,7 +28,7 @@ function timeAgo(iso?: string) {
 import CategoryBadge from './CategoryBadge';
 
 export default function PostCard(props: PostCardProps) {
-  const { title, category, description, authorName, authorAvatarUrl, createdAt, imageUrl } = props;
+  const { title, category, description, authorName, authorAvatarUrl, createdAt, imageUrl, onDelete, deleting } = props;
 
   return (
     <article className="card overflow-hidden">
@@ -37,7 +39,19 @@ export default function PostCard(props: PostCardProps) {
       <div className="p-4">
         <div className="mb-2 flex items-start justify-between gap-3">
           <h3 className="text-[17px] font-semibold leading-snug text-gray-900">{title}</h3>
-          <CategoryBadge category={category} className="ml-auto" />
+          <div className="ml-auto flex items-center gap-2">
+            <CategoryBadge category={category} />
+            {onDelete && (
+              <button
+                title="Ta bort"
+                disabled={deleting}
+                onClick={onDelete}
+                className="rounded-md px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                {deleting ? 'Tar bort…' : 'Ta bort'}
+              </button>
+            )}
+          </div>
         </div>
 
         <p className="text-sm text-gray-700">

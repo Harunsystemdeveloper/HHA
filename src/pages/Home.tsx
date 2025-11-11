@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getPosts } from '../api/posts';
+import { getPosts, deletePost } from '../api/posts';
 import PostCard from '../components/PostCard';
 import type { Category, Post } from '../types';
 import { CATEGORIES as CAT_LIST } from '../types';
@@ -16,6 +16,7 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -48,6 +49,20 @@ export default function Home() {
       return byCat && byText;
     });
   }, [posts, query, active]);
+
+  async function handleDelete(id: string | number) {
+    const ok = window.confirm('Ta bort detta inlägg?');
+    if (!ok) return;
+    try {
+      setDeletingId(id);
+      await deletePost(id);
+      setPosts((prev) => prev.filter((p) => p.id !== id));
+    } catch (e) {
+      alert('Kunde inte ta bort inlägget');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -116,7 +131,12 @@ export default function Home() {
         filtered.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((p) => (
-              <PostCard key={p.id} {...p} />
+              <PostCard
+                key={p.id}
+                {...p}
+                onDelete={() => handleDelete(p.id)}
+                deleting={deletingId === p.id}
+              />
             ))}
           </div>
         ) : (
