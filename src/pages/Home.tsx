@@ -5,6 +5,8 @@ import PostCard from '../components/PostCard';
 import type { Category, Post } from '../types';
 import { CATEGORIES as CAT_LIST } from '../types';
 import EmptyState from '../components/EmptyState';
+import SearchBar from '../components/SearchBar';
+import FilterChips from '../components/FilterChips';
 
 const ALL: Category = 'Alla';
 const CATEGORIES: Category[] = [ALL, ...CAT_LIST];
@@ -68,20 +70,7 @@ export default function Home() {
     <div className="space-y-6">
       {/* Search + action */}
       <div className="rounded-2xl border border-purple-200/60 bg-white/60 p-3 shadow-soft">
-        <div className="relative">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Sök inlägg..."
-            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pr-24 text-[15px] shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-          />
-          <button
-            onClick={() => setQuery(query)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            Sök
-          </button>
-        </div>
+        <SearchBar value={query} onChange={setQuery} />
         <div className="mt-3 flex justify-end">
           <button
             onClick={() => navigate('/create')}
@@ -98,17 +87,7 @@ export default function Home() {
           <span>🛠️</span>
           <span>Filtrera efter kategori</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c}
-              className={`chip ${active === c ? 'chip-active' : 'chip-inactive'}`}
-              onClick={() => setActive(c)}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+        <FilterChips active={active} onChange={setActive} />
       </section>
 
       {/* Status */}
