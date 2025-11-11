@@ -5,7 +5,6 @@ import PostCard from '../components/PostCard';
 import type { Category, Post } from '../types';
 import { CATEGORIES as CAT_LIST } from '../types';
 import EmptyState from '../components/EmptyState';
-import ConfigAlert from '../components/ConfigAlert';
 import SearchBar from '../components/SearchBar';
 import FilterChips from '../components/FilterChips';
 import { demoPosts } from '../mock/postsDemo';
@@ -32,7 +31,12 @@ export default function Home() {
         const data = await getPosts();
         if (mounted) setPosts(data);
       } catch (e) {
-        if (mounted) setError('Kunde inte hämta inlägg');
+        // Undvik att visa felruta – visa demo‑inlägg direkt
+        if (mounted) {
+          setPosts(demoPosts);
+          setUsingDemo(true);
+          setError('');
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -91,7 +95,7 @@ export default function Home() {
           <span>Filtrera efter kategori</span>
         </div>
         <FilterChips active={active} onChange={setActive} />
-        {(!loading && (error || posts.length === 0) && !usingDemo) && (
+        {(!loading && posts.length === 0 && !usingDemo) && (
           <div className="mt-3">
             <button
               onClick={() => { setPosts(demoPosts); setUsingDemo(true); setError(''); }}
@@ -107,7 +111,7 @@ export default function Home() {
       {loading && (
         <div className="rounded-xl bg-white/60 p-3 text-sm text-gray-700 shadow-soft">Laddar…</div>
       )}
-      {error && !loading && !usingDemo && <ConfigAlert message={error} />}
+      {/* Error banner borttagen: vi visar demo‑inlägg istället vid fel */}
 
       {/* Counter */}
       {!loading && !error && (
