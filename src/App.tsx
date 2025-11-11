@@ -25,6 +25,14 @@ export default function App() {
           >
             Skapa inlägg
           </NavLink>
+          <NavLink
+            to="/my-posts"
+            className={({ isActive }) =>
+              `rounded-md px-3 py-1.5 ${isActive ? 'bg-brand-600 text-white' : 'text-gray-700 hover:text-gray-900 hover:bg-white'}`
+            }
+          >
+            Mina inlägg
+          </NavLink>
         </nav>
       </div>
       <main className="mx-auto max-w-6xl p-4">
