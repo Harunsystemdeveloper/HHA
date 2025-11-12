@@ -8,12 +8,14 @@ import EmptyState from '../components/EmptyState';
 import SearchBar from '../components/SearchBar';
 import FilterChips from '../components/FilterChips';
 import { demoPosts } from '../mock/postsDemo';
+import useCurrentUser from '../hooks/useCurrentUser';
 
 const ALL: Category = 'Alla';
 const CATEGORIES: Category[] = [ALL, ...CAT_LIST];
 
 export default function Home() {
   const navigate = useNavigate();
+  const { user } = useCurrentUser();
   const [query, setQuery] = useState(() => localStorage.getItem('da_lastQuery') || '');
   const [active, setActive] = useState<Category>(() => (localStorage.getItem('da_lastCategory') as Category) || ALL);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -81,6 +83,14 @@ export default function Home() {
     }
   }
 
+  const isAdmin = user.roles?.some((r) => /admin/i.test(r));
+  function isOwner(p: Post) {
+    const username = user.username?.toLowerCase() || '';
+    const byAuthorName = (p.authorName || '').toLowerCase() === username;
+    const anyOwner = ((p as any).owner || (p as any).author || '').toLowerCase() === username;
+    return !!username && (byAuthorName || anyOwner);
+  }
+
   return (
     <div className="space-y-6">
       {/* Search + action */}
@@ -132,14 +142,17 @@ export default function Home() {
       {!loading && !error && (
         filtered.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((p) => (
-              <PostCard
-                key={p.id}
-                {...p}
-                onDelete={() => handleDelete(p.id)}
-                deleting={deletingId === p.id}
-              />
-            ))}
+            {filtered.map((p) => {
+              const allow = isAdmin || isOwner(p);
+              return (
+                <PostCard
+                  key={p.id}
+                  {...p}
+                  onDelete={allow ? () => handleDelete(p.id) : undefined}
+                  deleting={deletingId === p.id}
+                />
+              );
+            })}
           </div>
         ) : (
           <EmptyState />
