@@ -14,8 +14,8 @@ const CATEGORIES: Category[] = [ALL, ...CAT_LIST];
 
 export default function Home() {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
-  const [active, setActive] = useState<Category>(ALL);
+  const [query, setQuery] = useState(() => localStorage.getItem('da_lastQuery') || '');
+  const [active, setActive] = useState<Category>(() => (localStorage.getItem('da_lastCategory') as Category) || ALL);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,6 +58,14 @@ export default function Home() {
       return byCat && byText;
     });
   }, [posts, query, active]);
+
+  // Persist filters locally so they survive reloads
+  useEffect(() => {
+    try {
+      localStorage.setItem('da_lastQuery', query);
+      localStorage.setItem('da_lastCategory', active);
+    } catch {}
+  }, [query, active]);
 
   async function handleDelete(id: string | number) {
     const ok = window.confirm('Ta bort detta inlägg?');
