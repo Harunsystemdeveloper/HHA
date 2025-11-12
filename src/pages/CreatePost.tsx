@@ -24,15 +24,12 @@ export default function CreatePost() {
     setError('');
     setDetails(null);
     try {
-      // Build payload based on the target Orchard content type
       let payload: any = { ...form };
 
-      // Special-case for the sample "Pet" type: it expects { title, species }
       if (String(contentType).toLowerCase() === 'pet') {
         payload = { title: form.title, species: form.category };
       }
 
-      // Save author for My Posts convenience
       if (form.authorName) {
         try { localStorage.setItem('da_authorName', form.authorName); } catch {}
       }

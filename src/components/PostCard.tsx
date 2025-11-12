@@ -9,6 +9,7 @@ type PostCardProps = {
   imageUrl?: string | null;
   onDelete?: () => void;
   deleting?: boolean;
+  editHref?: string;
 };
 
 function timeAgo(iso?: string) {
@@ -26,9 +27,10 @@ function timeAgo(iso?: string) {
 }
 
 import CategoryBadge from './CategoryBadge';
+import { Link } from 'react-router-dom';
 
 export default function PostCard(props: PostCardProps) {
-  const { title, category, description, authorName, authorAvatarUrl, createdAt, imageUrl, onDelete, deleting } = props;
+  const { title, category, description, authorName, authorAvatarUrl, createdAt, imageUrl, onDelete, deleting, editHref } = props;
 
   return (
     <article className="card overflow-hidden">
@@ -41,6 +43,11 @@ export default function PostCard(props: PostCardProps) {
           <h3 className="text-[17px] font-semibold leading-snug text-gray-900">{title}</h3>
           <div className="ml-auto flex items-center gap-2">
             <CategoryBadge category={category} />
+            {editHref && (
+              <Link to={editHref} title="Redigera" className="rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50">
+                Redigera
+              </Link>
+            )}
             {onDelete && (
               <button
                 title="Ta bort"
@@ -48,7 +55,7 @@ export default function PostCard(props: PostCardProps) {
                 onClick={onDelete}
                 className="rounded-md px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
               >
-                {deleting ? 'Tar bortâ€¦' : 'Ta bort'}
+                {deleting ? 'Tar bort…' : 'Ta bort'}
               </button>
             )}
           </div>
@@ -75,3 +82,5 @@ export default function PostCard(props: PostCardProps) {
     </article>
   );
 }
+
+
