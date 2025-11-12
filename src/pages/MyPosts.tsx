@@ -4,10 +4,12 @@ import { getPosts, deletePost } from '../api/posts';
 import type { Post } from '../types';
 import PostCard from '../components/PostCard';
 import EmptyState from '../components/EmptyState';
+import useCurrentUser from '../hooks/useCurrentUser';
 
 const LS_KEY = 'da_authorName';
 
 export default function MyPosts() {
+  const { user } = useCurrentUser();
   const [myName, setMyName] = useState<string>('');
   const [editingName, setEditingName] = useState<string>('');
   const [posts, setPosts] = useState<Post[]>([]);
@@ -45,6 +47,14 @@ export default function MyPosts() {
     if (!name) return [] as Post[];
     return posts.filter((p) => (p.authorName || '').toLowerCase() === name);
   }, [posts, myName]);
+
+  const isAdmin = user.roles?.some((r) => /admin/i.test(r));
+  function isOwner(p: Post) {
+    const username = user.username?.toLowerCase() || '';
+    const byAuthorName = (p.authorName || '').toLowerCase() === username;
+    const anyOwner = ((p as any).owner || (p as any).author || '').toLowerCase() === username;
+    return !!username && (byAuthorName || anyOwner);
+  }
 
   async function handleDelete(id: string | number) {
     const ok = window.confirm('Ta bort detta inlägg?');
@@ -120,14 +130,17 @@ export default function MyPosts() {
       {!loading && !error && myName && (
         mine.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {mine.map((p) => (
-              <PostCard
-                key={p.id}
-                {...p}
-                onDelete={() => handleDelete(p.id)}
-                deleting={deletingId === p.id}
-              />
-            ))}
+            {mine.map((p) => {
+              const allow = isAdmin || isOwner(p);
+              return (
+                <PostCard
+                  key={p.id}
+                  {...p}
+                  onDelete={allow ? () => handleDelete(p.id) : undefined}
+                  deleting={deletingId === p.id}
+                />
+              );
+            })}
           </div>
         ) : (
           <EmptyState
@@ -141,4 +154,3 @@ export default function MyPosts() {
     </div>
   );
 }
-
