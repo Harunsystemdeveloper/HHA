@@ -6,33 +6,35 @@ using OrchardCore.Users;
 using OrchardCore.Users.Models;
 using OrchardCore.Users.Services;
 using System.Text.Json.Nodes;
-using System.Security.Claims;
 
 public static class AuthEndpoints
 {
     public static void MapAuthEndpoints(this WebApplication app)
     {
-        // Register new user
+        // POST /api/auth/register - Register new user
         app.MapPost("/api/auth/register", async (
             [FromBody] RegisterRequest request,
             [FromServices] IUserService userService,
             [FromServices] UserManager<IUser> userManager) =>
         {
-            if (string.IsNullOrEmpty(request.Username) ||
-                string.IsNullOrEmpty(request.Password))
+            if (string.IsNullOrWhiteSpace(request.Username) ||
+                string.IsNullOrWhiteSpace(request.Password))
             {
                 return Results.BadRequest(new { error = "Username and password required" });
             }
 
+            // Orchard (Admin UI) kräver ofta E.164-format för telefon: +467...
+            var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone;
+
             var errors = new Dictionary<string, string>();
+
             var user = await userService.CreateUserAsync(
                 new User
                 {
                     UserName = request.Username,
                     Email = request.Email,
                     EmailConfirmed = true,
-                    PhoneNumber = request.Phone,
-
+                    PhoneNumber = phone,
                     Properties = new JsonObject
                     {
                         ["FirstName"] = request.FirstName ?? "",
@@ -52,8 +54,16 @@ public static class AuthEndpoints
                 });
             }
 
-            // Assign Customer role (must exist in Orchard)
-            await userManager.AddToRoleAsync(user, "Customer");
+            // Assign role (Customer måste finnas i Orchard -> Security -> Roles)
+            var roleResult = await userManager.AddToRoleAsync(user, "Customer");
+            if (!roleResult.Succeeded)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "User created but role assignment failed",
+                    details = roleResult.Errors.Select(e => e.Description).ToList()
+                });
+            }
 
             return Results.Ok(new
             {
@@ -61,7 +71,7 @@ public static class AuthEndpoints
                 email = request.Email,
                 firstName = request.FirstName,
                 lastName = request.LastName,
-                phone = request.Phone,
+                phone = phone,
                 role = "Customer",
                 message = "User created successfully"
             });
@@ -73,21 +83,16 @@ public static class AuthEndpoints
         app.MapPost("/api/auth/login", async (
             [FromBody] LoginRequest request,
             [FromServices] SignInManager<IUser> signInManager,
-            [FromServices] UserManager<IUser> userManager,
-            HttpContext context) =>
+            [FromServices] UserManager<IUser> userManager) =>
         {
-            if (string.IsNullOrEmpty(request.UsernameOrEmail) ||
-                string.IsNullOrEmpty(request.Password))
+            if (string.IsNullOrWhiteSpace(request.UsernameOrEmail) ||
+                string.IsNullOrWhiteSpace(request.Password))
             {
                 return Results.BadRequest(new { error = "Username/email and password required" });
             }
 
-            // Try to find user by username first, then by email
-            var user = await userManager.FindByNameAsync(request.UsernameOrEmail);
-            if (user == null)
-            {
-                user = await userManager.FindByEmailAsync(request.UsernameOrEmail);
-            }
+            var user = await userManager.FindByNameAsync(request.UsernameOrEmail)
+                       ?? await userManager.FindByEmailAsync(request.UsernameOrEmail);
 
             if (user == null)
             {
@@ -106,6 +111,8 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
             }
 
+            var roles = await userManager.GetRolesAsync(user);
+
             var u = user as User;
             return Results.Ok(new
             {
@@ -114,9 +121,7 @@ public static class AuthEndpoints
                 phoneNumber = u?.PhoneNumber,
                 firstName = u?.Properties?["FirstName"]?.ToString(),
                 lastName = u?.Properties?["LastName"]?.ToString(),
-                roles = context.User.FindAll(ClaimTypes.Role)
-                    .Select(c => c.Value)
-                    .ToList()
+                roles = roles.ToList()
             });
         })
         .AllowAnonymous()
@@ -134,8 +139,9 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
             }
 
-            var u = user as User;
+            var roles = await userManager.GetRolesAsync(user);
 
+            var u = user as User;
             return Results.Ok(new
             {
                 username = user.UserName,
@@ -143,9 +149,7 @@ public static class AuthEndpoints
                 phoneNumber = u?.PhoneNumber,
                 firstName = u?.Properties?["FirstName"]?.ToString(),
                 lastName = u?.Properties?["LastName"]?.ToString(),
-                roles = context.User.FindAll(ClaimTypes.Role)
-                    .Select(c => c.Value)
-                    .ToList()
+                roles = roles.ToList()
             });
         });
 
