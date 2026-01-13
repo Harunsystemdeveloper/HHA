@@ -81,16 +81,20 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .DisableAntiforgery();
 
+        // ✅ FIX: Läs request body manuellt (undviker binding-problem)
         // POST /api/auth/login - Login with username OR email
         app.MapPost("/api/auth/login", async (
-            [FromBody] LoginRequest request,
+            HttpContext context,
             [FromServices] SignInManager<IUser> signInManager,
             [FromServices] UserManager<IUser> userManager) =>
         {
-            if (string.IsNullOrWhiteSpace(request.UsernameOrEmail) ||
+            var request = await context.Request.ReadFromJsonAsync<LoginRequest>();
+
+            if (request == null ||
+                string.IsNullOrWhiteSpace(request.UsernameOrEmail) ||
                 string.IsNullOrWhiteSpace(request.Password))
             {
-                return Results.BadRequest(new { error = "Username/email and password required" });
+                return Results.BadRequest(new { error = "Cannot read request body" });
             }
 
             var user = await userManager.FindByNameAsync(request.UsernameOrEmail)
@@ -229,15 +233,19 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .DisableAntiforgery();
 
+        // ✅ FIX: Läs request body manuellt (undviker binding-problem)
         endpoints.MapPost("/api/auth/login", async (
-            [FromBody] LoginRequest request,
+            HttpContext context,
             [FromServices] SignInManager<IUser> signInManager,
             [FromServices] UserManager<IUser> userManager) =>
         {
-            if (string.IsNullOrWhiteSpace(request.UsernameOrEmail) ||
+            var request = await context.Request.ReadFromJsonAsync<LoginRequest>();
+
+            if (request == null ||
+                string.IsNullOrWhiteSpace(request.UsernameOrEmail) ||
                 string.IsNullOrWhiteSpace(request.Password))
             {
-                return Results.BadRequest(new { error = "Username/email and password required" });
+                return Results.BadRequest(new { error = "Cannot read request body" });
             }
 
             var user = await userManager.FindByNameAsync(request.UsernameOrEmail)
