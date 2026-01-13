@@ -1,5 +1,6 @@
 namespace RestRoutes;
 
+using Microsoft.AspNetCore.Http;
 using System.Text.RegularExpressions;
 
 public static partial class GetRoutes
@@ -50,11 +51,11 @@ public static partial class GetRoutes
 
         if (offsetInt.HasValue && limitInt.HasValue)
         {
-            arr = Arr(arr.Slice(offsetInt.Value, offsetInt.Value + limitInt.Value));
+            arr = Arr(arr.Slice(offsetInt.Value, offsetInt.Value + limitInt.Value).ToArray());
         }
         else if (limitInt.HasValue)
         {
-            arr = Arr(arr.Slice(0, limitInt.Value));
+            arr = Arr(arr.Slice(0, limitInt.Value).ToArray());
         }
 
         // Convert back to List<Dictionary>
@@ -98,9 +99,10 @@ public static partial class GetRoutes
     private static List<Dictionary<string, object>> ConvertFromArr(Arr arr)
     {
         var result = new List<Dictionary<string, object>>();
-        foreach (Obj item in arr)
+        foreach (var item in arr)
         {
-            result.Add(ConvertFromObj(item));
+            if (item is Obj o)
+                result.Add(ConvertFromObj(o));
         }
         return result;
     }
@@ -111,6 +113,7 @@ public static partial class GetRoutes
         foreach (var key in obj.GetKeys())
         {
             var value = obj[key];
+
             if (value is Obj nestedObj)
             {
                 dict[key] = ConvertFromObj(nestedObj);  // Recursive!
@@ -124,16 +127,20 @@ public static partial class GetRoutes
                     {
                         list.Add(ConvertFromObj(itemObj));
                     }
-                    else
+                    else if (item != null)
                     {
                         list.Add(item);
                     }
                 }
                 dict[key] = list;
             }
-            else
+            else if (value != null)
             {
                 dict[key] = value;
+            }
+            else
+            {
+                dict[key] = "";
             }
         }
         return dict;
@@ -145,9 +152,10 @@ public static partial class GetRoutes
         var ops1 = Arr("!=", ">=", "<=", "=", ">", "<", "_LIKE_", "_AND_", "LIKE", "AND");
         var ops2 = Arr("!=", ">=", "<=", "=", ">", "<", "LIKE", "AND", "LIKE", "AND");
 
-        foreach (var op in ops1)
+        foreach (var opObj in ops1)
         {
-            var splitParts = where.Split((string)op);
+            var op = (string)opObj!;
+            var splitParts = where.Split(op);
             where = string.Join($"_-_{ops1.IndexOf(op)}_-_", splitParts);
         }
 
@@ -162,7 +170,7 @@ public static partial class GetRoutes
             }
             else
             {
-                mappedParts.Push(ops2[int.Parse((string)x)]);
+                mappedParts.Push(ops2[int.Parse((string)x!)]!);
             }
             idx++;
         }
@@ -172,7 +180,7 @@ public static partial class GetRoutes
         var faulty = false;
         foreach (var x in mappedParts)
         {
-            if (i++ % 4 == 3 && (string)x != "AND")
+            if (i++ % 4 == 3 && (string)x! != "AND")
             {
                 faulty = true;
                 break;
@@ -193,7 +201,7 @@ public static partial class GetRoutes
         {
             if (j % 4 == 0)
             {
-                keys.Push(Regex.Replace((string)mappedParts[j], @"[^A-Za-z0-9_\-,\.]", ""));
+                keys.Push(Regex.Replace((string)mappedParts[j]!, @"[^A-Za-z0-9_\-,\.]", ""));
             }
             else if (j % 4 == 2)
             {
@@ -209,8 +217,8 @@ public static partial class GetRoutes
         var result = data;
         for (var idx2 = 0; idx2 < keys.Length; idx2++)
         {
-            var key = (string)keys[idx2];
-            var op = (string)operators[idx2];
+            var key = (string)keys[idx2]!;
+            var op = (string)operators[idx2]!;
             var value = values[idx2];
 
             result = ApplySingleFilter(result, key, op, value);
@@ -219,17 +227,19 @@ public static partial class GetRoutes
         return result;
     }
 
-    private static Arr ApplySingleFilter(Arr data, string key, string op, dynamic value)
+    private static Arr ApplySingleFilter(Arr data, string key, string op, object? value)
     {
         var keyParts = key.Split('.');
 
-        return data.Filter(item =>
+        return data.Filter(itemObj =>
         {
-            var itemValue = GetNestedValue(item, keyParts);
+            // itemObj kan vara Obj eller något annat
+            if (itemObj is not Obj item) return false;
 
+            var itemValue = GetNestedValue(item, keyParts);
             if (itemValue == null) return false;
 
-            var itemStr = itemValue.ToString();
+            var itemStr = itemValue.ToString() ?? "";
             var valueStr = value?.ToString() ?? "";
 
             return op switch
@@ -246,9 +256,9 @@ public static partial class GetRoutes
         });
     }
 
-    private static dynamic? GetNestedValue(dynamic obj, string[] keyParts)
+    private static object? GetNestedValue(Obj obj, string[] keyParts)
     {
-        dynamic current = obj;
+        object? current = obj;
 
         foreach (var part in keyParts)
         {
@@ -282,9 +292,9 @@ public static partial class GetRoutes
 
         // Convert to list for LINQ sorting
         var list = new List<Obj>();
-        foreach (Obj item in data)
+        foreach (var x in data)
         {
-            list.Add(item);
+            if (x is Obj o) list.Add(o);
         }
 
         IOrderedEnumerable<Obj>? ordered = null;
@@ -299,14 +309,12 @@ public static partial class GetRoutes
 
             if (ordered == null)
             {
-                // First sort
                 ordered = isDesc
                     ? list.OrderByDescending(item => GetNestedValue(item, keyParts)?.ToString() ?? "")
                     : list.OrderBy(item => GetNestedValue(item, keyParts)?.ToString() ?? "");
             }
             else
             {
-                // ThenBy for multiple sorts
                 ordered = isDesc
                     ? ordered.ThenByDescending(item => GetNestedValue(item, keyParts)?.ToString() ?? "")
                     : ordered.ThenBy(item => GetNestedValue(item, keyParts)?.ToString() ?? "");
@@ -314,6 +322,6 @@ public static partial class GetRoutes
         }
 
         var finalList = ordered != null ? ordered.ToList() : list;
-        return Arr(finalList.ToArray());
+        return Arr(finalList.Cast<object?>().ToArray());
     }
 }
