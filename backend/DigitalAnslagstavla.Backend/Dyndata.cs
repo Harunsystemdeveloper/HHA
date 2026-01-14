@@ -29,7 +29,8 @@ namespace Dyndata
     }
 
     // Slice: end är EXCLUSIVE
-    public IEnumerable<object?> Slice(int start, int endExclusive)
+    // CS0108 fix: markera som new
+    public new IEnumerable<object?> Slice(int start, int endExclusive)
     {
       if (start < 0) start = 0;
       if (endExclusive < 0) endExclusive = 0;
@@ -46,12 +47,15 @@ namespace Dyndata
     }
   }
 
-  // Backward-compat om du råkat använda lowercase "obj"
+  // Backward-compat: lowercase obj
+#pragma warning disable CS8981
   public class obj : Obj { }
+#pragma warning restore CS8981
 
   public static class Factory
   {
     public static Obj Obj() => new Obj();
+
     public static Obj Obj(params (string key, object? value)[] props)
     {
       var o = new Obj();
@@ -64,7 +68,9 @@ namespace Dyndata
     public static Arr Arr(params object?[] items) => new Arr(items);
 
     // Backward-compat
+#pragma warning disable CS8981
     public static obj obj() => new obj();
+
     public static obj obj(params (string key, object? value)[] props)
     {
       var o = new obj();
@@ -72,6 +78,8 @@ namespace Dyndata
         o[k] = v;
       return o;
     }
+#pragma warning restore CS8981
+
     public static Arr arr() => new Arr();
     public static Arr arr(params object?[] items) => new Arr(items);
   }

@@ -24,7 +24,7 @@ public static class PostRoutes
         "latest"
     };
 
-    // ✅ Din befintliga metod (oförändrad)
+    // ✅ Din befintliga metod (uppdaterad men inte borttagen)
     public static void MapPostRoutes(this WebApplication app)
     {
         app.MapPost("api/{contentType}", async (
@@ -43,14 +43,19 @@ public static class PostRoutes
                 // Check if body is null or empty
                 if (body == null || body.Count == 0)
                 {
-                    return Results.Json(new
-                    {
-                        error = "Cannot read request body"
-                    }, statusCode: 400);
+                    return Results.Json(new { error = "Cannot read request body" }, statusCode: 400);
                 }
 
-                // Validate fields
+                // Validate fields (med fallback om schema/clean output är för snäv)
                 var validFields = await FieldValidator.GetValidFieldsAsync(contentType, contentManager, session);
+
+                // ✅ Fallback: vissa content types returnerar bara "id/title" i clean output
+                // Då kan vi INTE använda det som schema.
+                if (LooksLikeBrokenSchema(validFields))
+                {
+                    validFields = body.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+
                 var (isValid, invalidFields) = FieldValidator.ValidateFields(body, validFields, RESERVED_FIELDS);
 
                 if (!isValid)
@@ -65,9 +70,9 @@ public static class PostRoutes
 
                 var contentItem = await contentManager.NewAsync(contentType);
 
-                // Extract and handle special fields explicitly
+                // title -> DisplayText
                 contentItem.DisplayText = body.ContainsKey("title")
-                    ? body["title"].ToString()
+                    ? body["title"]?.ToString()
                     : "Untitled";
 
                 contentItem.Owner = context.User?.Identity?.Name ?? "anonymous";
@@ -76,33 +81,50 @@ public static class PostRoutes
                 // Build content directly into the content item
                 foreach (var kvp in body)
                 {
-                    // Skip all reserved fields
                     if (RESERVED_FIELDS.Contains(kvp.Key))
                         continue;
 
                     var pascalKey = ToPascalCase(kvp.Key);
                     var value = kvp.Value;
 
-                    // Handle "items" field - this should become BagPart
-                    if (kvp.Key == "items" && value is JsonElement itemsElement && itemsElement.ValueKind == JsonValueKind.Array)
+                    // ✅ SPECIAL: klienten skickar "html" -> Orchard HtmlBodyPart.Html
+                    if (kvp.Key.Equals("html", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string? htmlValue = value switch
+                        {
+                            JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+                            _ => value?.ToString()
+                        };
+
+                        if (!string.IsNullOrWhiteSpace(htmlValue))
+                        {
+                            contentItem.Content["HtmlBodyPart"] = new JObject
+                            {
+                                ["Html"] = htmlValue
+                            };
+                        }
+
+                        continue;
+                    }
+
+                    // Handle "items" field - BagPart
+                    if (kvp.Key.Equals("items", StringComparison.OrdinalIgnoreCase) &&
+                        value is JsonElement itemsElement &&
+                        itemsElement.ValueKind == JsonValueKind.Array)
                     {
                         var bagItems = new JArray();
                         foreach (var item in itemsElement.EnumerateArray())
                         {
-                            if (item.ValueKind == JsonValueKind.Object)
-                            {
-                                // Get contentType first
-                                string? itemType = null;
-                                if (item.TryGetProperty("contentType", out var ctProp) && ctProp.ValueKind == JsonValueKind.String)
-                                {
-                                    itemType = ctProp.GetString();
-                                }
+                            if (item.ValueKind != JsonValueKind.Object) continue;
 
-                                if (!string.IsNullOrEmpty(itemType))
-                                {
-                                    var bagItem = CreateBagPartItem(item, itemType);
-                                    bagItems.Add(bagItem);
-                                }
+                            string? itemType = null;
+                            if (item.TryGetProperty("contentType", out var ctProp) && ctProp.ValueKind == JsonValueKind.String)
+                                itemType = ctProp.GetString();
+
+                            if (!string.IsNullOrEmpty(itemType))
+                            {
+                                var bagItem = CreateBagPartItem(item, itemType);
+                                bagItems.Add(bagItem);
                             }
                         }
 
@@ -116,28 +138,34 @@ public static class PostRoutes
                         continue;
                     }
 
-                    // Handle fields ending with "Id" - these are content item references
-                    if (kvp.Key.EndsWith("Id", StringComparison.OrdinalIgnoreCase) &&
-                        kvp.Key.Length > 2)
+                    // Handle fields ending with "Id" - content item references
+                    if (kvp.Key.EndsWith("Id", StringComparison.OrdinalIgnoreCase) && kvp.Key.Length > 2)
                     {
-                        // Transform "ownerId" → "Owner" with ContentItemIds
-                        var fieldName = pascalKey.Substring(0, pascalKey.Length - 2); // Remove "Id"
+                        var fieldName = pascalKey.Substring(0, pascalKey.Length - 2);
                         var idValue = value is JsonElement jsonEl && jsonEl.ValueKind == JsonValueKind.String
                             ? jsonEl.GetString()
-                            : value.ToString();
+                            : value?.ToString();
 
-                        // Assign as a List<string> to avoid wrapping
-                        if (idValue != null)
+                        if (!string.IsNullOrWhiteSpace(idValue))
                         {
                             contentItem.Content[contentType][fieldName]["ContentItemIds"] = new List<string> { idValue };
                         }
+
+                        continue;
                     }
-                    else if (value is JsonElement jsonElement)
+
+                    // JsonElement handling
+                    if (value is JsonElement jsonElement)
                     {
-                        // Extract the actual string value, not a wrapped JObject
                         if (jsonElement.ValueKind == JsonValueKind.String)
                         {
-                            contentItem.Content[contentType][pascalKey]["Text"] = jsonElement.GetString();
+                            var str = jsonElement.GetString();
+
+                            // ✅ HtmlField-liknande fält: skriv till "Html" istället för "Text"
+                            if (IsLikelyHtmlField(kvp.Key, pascalKey))
+                                contentItem.Content[contentType][pascalKey]["Html"] = str;
+                            else
+                                contentItem.Content[contentType][pascalKey]["Text"] = str;
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Number)
                         {
@@ -149,7 +177,6 @@ public static class PostRoutes
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Object)
                         {
-                            // Handle objects - convert keys to PascalCase
                             var obj = new JObject();
                             foreach (var prop in jsonElement.EnumerateObject())
                             {
@@ -159,46 +186,54 @@ public static class PostRoutes
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Array)
                         {
-                            // Handle arrays - could be ContentItemIds or Values
                             var arrayData = new List<string>();
                             foreach (var item in jsonElement.EnumerateArray())
                             {
                                 if (item.ValueKind == JsonValueKind.String)
                                 {
-                                    var str = item.GetString();
-                                    if (str != null) arrayData.Add(str);
+                                    var s = item.GetString();
+                                    if (!string.IsNullOrWhiteSpace(s)) arrayData.Add(s);
                                 }
                             }
 
-                            // Detect if array contains ContentItemIds (26-char alphanumeric strings)
                             var isContentItemIds = arrayData.Count > 0 &&
                                 arrayData.All(id => id.Length > 20 && id.All(c => char.IsLetterOrDigit(c)));
 
                             if (isContentItemIds)
-                            {
                                 contentItem.Content[contentType][pascalKey]["ContentItemIds"] = arrayData;
-                            }
                             else
-                            {
                                 contentItem.Content[contentType][pascalKey]["Values"] = arrayData;
-                            }
                         }
                         else
                         {
                             contentItem.Content[contentType][pascalKey] = ConvertJsonElement(jsonElement);
                         }
+
+                        continue;
                     }
-                    else if (value is string strValue)
+
+                    // Plain CLR types
+                    if (value is string strValue)
                     {
-                        contentItem.Content[contentType][pascalKey]["Text"] = strValue;
+                        if (IsLikelyHtmlField(kvp.Key, pascalKey))
+                            contentItem.Content[contentType][pascalKey]["Html"] = strValue;
+                        else
+                            contentItem.Content[contentType][pascalKey]["Text"] = strValue;
+
+                        continue;
                     }
-                    else if (value is int or long or double or float or decimal)
+
+                    if (value is int or long or double or float or decimal)
                     {
                         contentItem.Content[contentType][pascalKey] = new JObject
                         {
                             ["Value"] = JToken.FromObject(value)
                         };
+                        continue;
                     }
+
+                    // Fallback
+                    contentItem.Content[contentType][pascalKey] = JToken.FromObject(value);
                 }
 
                 await contentManager.CreateAsync(contentItem, VersionOptions.Published);
@@ -212,15 +247,12 @@ public static class PostRoutes
             }
             catch (Exception ex)
             {
-                return Results.Json(new
-                {
-                    error = ex.Message
-                }, statusCode: 500);
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
             }
         });
     }
 
-    // ✅ NY overload (vi tar inte bort något)
+    // ✅ NY overload (uppdaterad men inte borttagen)
     public static void MapPostRoutes(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("api/{contentType}", async (
@@ -241,6 +273,12 @@ public static class PostRoutes
                 }
 
                 var validFields = await FieldValidator.GetValidFieldsAsync(contentType, contentManager, session);
+
+                if (LooksLikeBrokenSchema(validFields))
+                {
+                    validFields = body.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+
                 var (isValid, invalidFields) = FieldValidator.ValidateFields(body, validFields, RESERVED_FIELDS);
 
                 if (!isValid)
@@ -256,7 +294,7 @@ public static class PostRoutes
                 var contentItem = await contentManager.NewAsync(contentType);
 
                 contentItem.DisplayText = body.ContainsKey("title")
-                    ? body["title"].ToString()
+                    ? body["title"]?.ToString()
                     : "Untitled";
 
                 contentItem.Owner = context.User?.Identity?.Name ?? "anonymous";
@@ -270,24 +308,43 @@ public static class PostRoutes
                     var pascalKey = ToPascalCase(kvp.Key);
                     var value = kvp.Value;
 
-                    if (kvp.Key == "items" && value is JsonElement itemsElement && itemsElement.ValueKind == JsonValueKind.Array)
+                    // ✅ SPECIAL: klienten skickar "html" -> Orchard HtmlBodyPart.Html
+                    if (kvp.Key.Equals("html", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string? htmlValue = value switch
+                        {
+                            JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+                            _ => value?.ToString()
+                        };
+
+                        if (!string.IsNullOrWhiteSpace(htmlValue))
+                        {
+                            contentItem.Content["HtmlBodyPart"] = new JObject
+                            {
+                                ["Html"] = htmlValue
+                            };
+                        }
+
+                        continue;
+                    }
+
+                    if (kvp.Key.Equals("items", StringComparison.OrdinalIgnoreCase) &&
+                        value is JsonElement itemsElement &&
+                        itemsElement.ValueKind == JsonValueKind.Array)
                     {
                         var bagItems = new JArray();
                         foreach (var item in itemsElement.EnumerateArray())
                         {
-                            if (item.ValueKind == JsonValueKind.Object)
-                            {
-                                string? itemType = null;
-                                if (item.TryGetProperty("contentType", out var ctProp) && ctProp.ValueKind == JsonValueKind.String)
-                                {
-                                    itemType = ctProp.GetString();
-                                }
+                            if (item.ValueKind != JsonValueKind.Object) continue;
 
-                                if (!string.IsNullOrEmpty(itemType))
-                                {
-                                    var bagItem = CreateBagPartItem(item, itemType);
-                                    bagItems.Add(bagItem);
-                                }
+                            string? itemType = null;
+                            if (item.TryGetProperty("contentType", out var ctProp) && ctProp.ValueKind == JsonValueKind.String)
+                                itemType = ctProp.GetString();
+
+                            if (!string.IsNullOrEmpty(itemType))
+                            {
+                                var bagItem = CreateBagPartItem(item, itemType);
+                                bagItems.Add(bagItem);
                             }
                         }
 
@@ -301,24 +358,30 @@ public static class PostRoutes
                         continue;
                     }
 
-                    if (kvp.Key.EndsWith("Id", StringComparison.OrdinalIgnoreCase) &&
-                        kvp.Key.Length > 2)
+                    if (kvp.Key.EndsWith("Id", StringComparison.OrdinalIgnoreCase) && kvp.Key.Length > 2)
                     {
                         var fieldName = pascalKey.Substring(0, pascalKey.Length - 2);
                         var idValue = value is JsonElement jsonEl && jsonEl.ValueKind == JsonValueKind.String
                             ? jsonEl.GetString()
-                            : value.ToString();
+                            : value?.ToString();
 
-                        if (idValue != null)
+                        if (!string.IsNullOrWhiteSpace(idValue))
                         {
                             contentItem.Content[contentType][fieldName]["ContentItemIds"] = new List<string> { idValue };
                         }
+
+                        continue;
                     }
-                    else if (value is JsonElement jsonElement)
+
+                    if (value is JsonElement jsonElement)
                     {
                         if (jsonElement.ValueKind == JsonValueKind.String)
                         {
-                            contentItem.Content[contentType][pascalKey]["Text"] = jsonElement.GetString();
+                            var str = jsonElement.GetString();
+                            if (IsLikelyHtmlField(kvp.Key, pascalKey))
+                                contentItem.Content[contentType][pascalKey]["Html"] = str;
+                            else
+                                contentItem.Content[contentType][pascalKey]["Text"] = str;
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Number)
                         {
@@ -344,8 +407,8 @@ public static class PostRoutes
                             {
                                 if (item.ValueKind == JsonValueKind.String)
                                 {
-                                    var str = item.GetString();
-                                    if (str != null) arrayData.Add(str);
+                                    var s = item.GetString();
+                                    if (!string.IsNullOrWhiteSpace(s)) arrayData.Add(s);
                                 }
                             }
 
@@ -353,30 +416,38 @@ public static class PostRoutes
                                 arrayData.All(id => id.Length > 20 && id.All(c => char.IsLetterOrDigit(c)));
 
                             if (isContentItemIds)
-                            {
                                 contentItem.Content[contentType][pascalKey]["ContentItemIds"] = arrayData;
-                            }
                             else
-                            {
                                 contentItem.Content[contentType][pascalKey]["Values"] = arrayData;
-                            }
                         }
                         else
                         {
                             contentItem.Content[contentType][pascalKey] = ConvertJsonElement(jsonElement);
                         }
+
+                        continue;
                     }
-                    else if (value is string strValue)
+
+                    if (value is string strValue)
                     {
-                        contentItem.Content[contentType][pascalKey]["Text"] = strValue;
+                        if (IsLikelyHtmlField(kvp.Key, pascalKey))
+                            contentItem.Content[contentType][pascalKey]["Html"] = strValue;
+                        else
+                            contentItem.Content[contentType][pascalKey]["Text"] = strValue;
+
+                        continue;
                     }
-                    else if (value is int or long or double or float or decimal)
+
+                    if (value is int or long or double or float or decimal)
                     {
                         contentItem.Content[contentType][pascalKey] = new JObject
                         {
                             ["Value"] = JToken.FromObject(value)
                         };
+                        continue;
                     }
+
+                    contentItem.Content[contentType][pascalKey] = JToken.FromObject(value);
                 }
 
                 await contentManager.CreateAsync(contentItem, VersionOptions.Published);
@@ -389,6 +460,24 @@ public static class PostRoutes
                 return Results.Json(new { error = ex.Message }, statusCode: 500);
             }
         });
+    }
+
+    private static bool LooksLikeBrokenSchema(HashSet<string> validFields)
+    {
+        if (validFields == null || validFields.Count == 0) return true;
+
+        var knownOk = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "id", "title", "displayText" };
+        var nonOkCount = validFields.Count(f => !knownOk.Contains(f));
+
+        return nonOkCount == 0;
+    }
+
+    private static bool IsLikelyHtmlField(string originalKey, string pascalKey)
+    {
+        return originalKey.Equals("html", StringComparison.OrdinalIgnoreCase)
+            || originalKey.EndsWith("html", StringComparison.OrdinalIgnoreCase)
+            || pascalKey.Equals("Html", StringComparison.OrdinalIgnoreCase)
+            || pascalKey.EndsWith("Html", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ToPascalCase(string str)
@@ -503,7 +592,10 @@ public static class PostRoutes
             }
             else if (value.ValueKind == JsonValueKind.String)
             {
-                typeSection[pascalKey] = new JObject { ["Text"] = value.GetString() };
+                if (IsLikelyHtmlField(prop.Name, pascalKey))
+                    typeSection[pascalKey] = new JObject { ["Html"] = value.GetString() };
+                else
+                    typeSection[pascalKey] = new JObject { ["Text"] = value.GetString() };
             }
             else if (value.ValueKind == JsonValueKind.Number)
             {

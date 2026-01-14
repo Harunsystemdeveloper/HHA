@@ -1,7 +1,7 @@
 namespace RestRoutes;
 
 using OrchardCore.ContentManagement;
-using YesSql.Services;
+using System.Text.Json.Nodes;
 
 public static class FieldValidator
 {
@@ -10,27 +10,58 @@ public static class FieldValidator
         IContentManager contentManager,
         YesSql.ISession session)
     {
-        // Try to get existing items first
+        // ✅ 1) Försök ta schema direkt från Orchard (utan att skapa temp-item i DB)
+        var valid = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "title"
+        };
+
+        var schemaItem = await contentManager.NewAsync(contentType);
+
+        // schemaItem.Content är en JsonNode (ofta JsonObject). Vi guardar allt för att slippa CS8602.
+        if (schemaItem.Content is JsonObject root)
+        {
+            // Innehållet under contentType (t.ex. HtmlDashboardWidget: { TitlePart:..., HtmlBodyPart:... })
+            if (root[contentType] is JsonObject typeObj)
+            {
+                foreach (var kv in typeObj)
+                {
+                    valid.Add(kv.Key);
+                }
+            }
+
+            // ✅ HtmlBodyPart -> vi vill tillåta att klienten skickar "html"
+            // (Du använder "html" i API:t, men Orchard kallar delen HtmlBodyPart)
+            if (root["HtmlBodyPart"] is not null)
+            {
+                valid.Add("html");
+            }
+        }
+
+        // Om vi fick mer än bara title så är vi klara
+        if (valid.Count > 1)
+            return valid;
+
+        // -----------------------------
+        // ✅ 2) Fallback: din gamla logik (behålls)
+        // -----------------------------
+
         var cleanObjects = await GetRoutes.FetchCleanContent(contentType, session, populate: false);
 
         if (cleanObjects.Any())
         {
-            // Use existing item to extract valid fields
             return cleanObjects.First().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
-        // No existing items - create a temporary one to get the schema
         var tempItem = await contentManager.NewAsync(contentType);
         tempItem.DisplayText = "_temp_schema_item";
 
         await contentManager.CreateAsync(tempItem, VersionOptions.Published);
         await session.SaveChangesAsync();
 
-        // Get the cleaned version to extract fields
         cleanObjects = await GetRoutes.FetchCleanContent(contentType, session, populate: false);
         var validFields = cleanObjects.First().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Delete the temporary item
         await contentManager.RemoveAsync(tempItem);
         await session.SaveChangesAsync();
 

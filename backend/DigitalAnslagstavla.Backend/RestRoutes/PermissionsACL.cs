@@ -10,6 +10,22 @@ public static class PermissionsACL
         HttpContext context,
         YesSql.ISession session)
     {
+        // ============================
+        // ✅ FIX: Admin bypass (snabbt & korrekt)
+        // ============================
+        // Orchard-admin ska alltid kunna läsa/skriva allt via REST.
+        // Detta löser 403 på GET/POST/PUT/DELETE även om RestPermissions saknas/är tom.
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            var isAdmin = context.User.FindAll(ClaimTypes.Role).Any(r =>
+                string.Equals(r.Value, "Administrator", StringComparison.OrdinalIgnoreCase));
+
+            if (isAdmin)
+            {
+                return null; // Permission granted
+            }
+        }
+
         // Fetch all RestPermissions
         var permissions = await GetRoutes.FetchCleanContent("RestPermissions", session, populate: false);
 
