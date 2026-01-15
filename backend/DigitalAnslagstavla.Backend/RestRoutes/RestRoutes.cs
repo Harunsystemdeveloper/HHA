@@ -2,15 +2,15 @@ namespace RestRoutes;
 
 public static class SetupRoutes
 {
-  // ✅ NYTT: Extension så app.MapSetupRoutes() funkar igen
+  // ✅ Extension så app.MapSetupRoutes() kan användas
+  // (behåller din struktur och logik)
   public static void MapSetupRoutes(this WebApplication app)
   {
-    // vi återanvänder din befintliga metod
     MapRestRoutes(app);
   }
 
   // ✅ Din befintliga metod (rör inte logiken)
-  // OBS: Inte en extension längre (för att undvika krock med RestRoutesExtensions.MapRestRoutes)
+  // Denna mappar alla dina routes + middleware för REST
   public static void MapRestRoutes(WebApplication app)
   {
     app.UseRestRoutesExceptionHandler();

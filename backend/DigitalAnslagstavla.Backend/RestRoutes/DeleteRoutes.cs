@@ -34,7 +34,7 @@ public static class DeleteRoutes
             // Get the existing content item
             var contentItem = await contentManager.GetAsync(id, VersionOptions.Published);
 
-            if (contentItem == null || contentItem.ContentType != contentType)
+            if (contentItem == null || !string.Equals(contentItem.ContentType, contentType, StringComparison.OrdinalIgnoreCase))
             {
                 return Results.Json(new { error = "Content item not found" }, statusCode: 404);
             }

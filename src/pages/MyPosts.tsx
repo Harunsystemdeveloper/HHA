@@ -1,38 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { getPosts, deletePost } from '../api/posts';
-import type { Post } from '../types';
-import PostCard from '../components/PostCard';
-import EmptyState from '../components/EmptyState';
-import useCurrentUser from '../hooks/useCurrentUser';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { getPosts, deletePost } from "../api/posts";
+import type { Post } from "../types";
+import PostCard from "../components/PostCard";
+import EmptyState from "../components/EmptyState";
+import useCurrentUser from "../hooks/useCurrentUser";
 
-const LS_KEY = 'da_authorName';
+const LS_KEY = "da_authorName";
 
 export default function MyPosts() {
   const { user } = useCurrentUser();
-  const [myName, setMyName] = useState<string>('');
-  const [editingName, setEditingName] = useState<string>('');
+
+  const [myName, setMyName] = useState<string>("");
+  const [editingName, setEditingName] = useState<string>("");
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | number | null>(null);
 
+  // ✅ sätt initialt namn smart (men skriv inte över om användaren redan har valt något)
   useEffect(() => {
-    // Load stored name
-    const stored = localStorage.getItem(LS_KEY) || '';
-    setMyName(stored);
-    setEditingName(stored);
+    const stored = localStorage.getItem(LS_KEY) || "";
+    const fallback = stored || user.username || "";
 
-    // Fetch posts
+    setMyName((prev) => (prev ? prev : fallback));
+    setEditingName((prev) => (prev ? prev : fallback));
+  }, [user.username]);
+
+  // Fetch posts
+  useEffect(() => {
     let mounted = true;
     (async () => {
       setLoading(true);
-      setError('');
+      setError("");
       try {
         const data = await getPosts();
         if (mounted) setPosts(data);
-      } catch (e) {
-        if (mounted) setError('Kunde inte hämta inlägg');
+      } catch {
+        if (mounted) setError("Kunde inte hämta inlägg");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -45,26 +51,44 @@ export default function MyPosts() {
   const mine = useMemo(() => {
     const name = myName.trim().toLowerCase();
     if (!name) return [] as Post[];
-    return posts.filter((p) => (p.authorName || '').toLowerCase() === name);
+
+    const toText = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+    return posts.filter((p) => {
+      const authorName = toText((p as any).authorName);
+      const owner = toText((p as any).owner);
+      const author = toText((p as any).author);
+
+      // matcha på vilken av dem som helst
+      return authorName === name || owner === name || author === name;
+    });
   }, [posts, myName]);
 
   const isAdmin = user.roles?.some((r) => /admin/i.test(r));
+
   function isOwner(p: Post) {
-    const username = user.username?.toLowerCase() || '';
-    const byAuthorName = (p.authorName || '').toLowerCase() === username;
-    const anyOwner = ((p as any).owner || (p as any).author || '').toLowerCase() === username;
-    return !!username && (byAuthorName || anyOwner);
+    const username = user.username?.toLowerCase() || "";
+    if (!username) return false;
+
+    const toText = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+    const authorName = toText((p as any).authorName);
+    const owner = toText((p as any).owner);
+    const author = toText((p as any).author);
+
+    return authorName === username || owner === username || author === username;
   }
 
   async function handleDelete(id: string | number) {
-    const ok = window.confirm('Ta bort detta inlägg?');
+    const ok = window.confirm("Ta bort detta inlägg?");
     if (!ok) return;
+
     try {
       setDeletingId(id);
       await deletePost(id);
       setPosts((prev) => prev.filter((p) => p.id !== id));
-    } catch (e) {
-      alert('Kunde inte ta bort inlägget');
+    } catch {
+      alert("Kunde inte ta bort inlägget");
     } finally {
       setDeletingId(null);
     }
@@ -73,7 +97,9 @@ export default function MyPosts() {
   function saveName() {
     const v = editingName.trim();
     setMyName(v);
-    localStorage.setItem(LS_KEY, v);
+    try {
+      localStorage.setItem(LS_KEY, v);
+    } catch { }
   }
 
   return (
@@ -83,6 +109,7 @@ export default function MyPosts() {
         <p className="mt-1 text-sm text-gray-600">
           Ange ditt namn så filtrerar vi dina publicerade inlägg.
         </p>
+
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             value={editingName}
@@ -90,12 +117,15 @@ export default function MyPosts() {
             placeholder="Ditt namn (samma som vid publicering)"
             className="w-full max-w-sm rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
           />
+
           <button
+            type="button" // ✅ viktigt
             onClick={saveName}
             className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
             Spara
           </button>
+
           <Link
             to="/create"
             className="ml-auto rounded-md border border-brand-200 bg-white px-3 py-2 text-sm font-medium text-brand-700 shadow-sm hover:bg-brand-50"
@@ -106,10 +136,15 @@ export default function MyPosts() {
       </div>
 
       {loading && (
-        <div className="rounded-xl bg-white/60 p-3 text-sm text-gray-700 shadow-soft">Laddar…</div>
+        <div className="rounded-xl bg-white/60 p-3 text-sm text-gray-700 shadow-soft">
+          Laddar…
+        </div>
       )}
+
       {error && !loading && (
-        <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700 shadow-soft">{error}</div>
+        <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700 shadow-soft">
+          {error}
+        </div>
       )}
 
       {!loading && !error && !myName && (
@@ -123,12 +158,13 @@ export default function MyPosts() {
 
       {!loading && !error && myName && (
         <div className="rounded-xl bg-white/60 p-3 text-sm text-gray-700 shadow-soft">
-          Visar {mine.length} inlägg för <span className="font-medium">{myName}</span>
+          Visar {mine.length} inlägg för{" "}
+          <span className="font-medium">{myName}</span>
         </div>
       )}
 
-      {!loading && !error && myName && (
-        mine.length > 0 ? (
+      {!loading && !error && myName &&
+        (mine.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {mine.map((p) => {
               const allow = isAdmin || isOwner(p);
@@ -149,8 +185,7 @@ export default function MyPosts() {
             actionHref="/create"
             actionLabel="Skapa inlägg"
           />
-        )
-      )}
+        ))}
     </div>
   );
 }

@@ -1,28 +1,35 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { login as apiLogin } from "../api/auth";
+import { useNavigate, Link, useOutletContext } from "react-router-dom";
+import { login as apiLogin, getCurrentUser } from "../api/auth";
+import type { CurrentUser } from "../api/auth";
 
-interface LoginProps {
-  onLoginSuccess?: () => void; // valfri
-}
+type OutletCtx = {
+  currentUser: CurrentUser;
+  setCurrentUser: (u: CurrentUser) => void;
+};
 
-export default function Login({ onLoginSuccess }: LoginProps) {
+export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
+  // ✅ hämta setCurrentUser från App via Outlet context
+  const { setCurrentUser } = useOutletContext<OutletCtx>();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
+
     try {
-      await apiLogin(username, password);
-      onLoginSuccess?.();
+      await apiLogin(username, password);       // cookie sätts
+      const user = await getCurrentUser();      // hämta username + roles
+      setCurrentUser(user);                     // ✅ uppdatera global state
       navigate("/", { replace: true });
-    } catch {
-      setError("Fel användarnamn eller lösenord.");
+    } catch (err: any) {
+      setError(err?.message || "Fel användarnamn eller lösenord.");
     } finally {
       setIsLoading(false);
     }
@@ -31,17 +38,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   return (
     <div className="min-h-[70vh] bg-gradient-to-b from-white to-purple-50/40">
       <div className="mx-auto grid max-w-md place-items-center px-4 py-10">
-        {/* Header/brand */}
         <div className="mb-6 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-accent text-white shadow-soft">
-            {/* Ikon */}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="h-6 w-6"
-              aria-hidden="true"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
               <path d="M3.75 6.75A2.25 2.25 0 016 4.5h12a2.25 2.25 0 012.25 2.25v7.5A2.25 2.25 0 0118 16.5h-5.19l-3.44 2.296A1 1 0 018 17.92V16.5H6a2.25 2.25 0 01-2.25-2.25v-7.5z" />
             </svg>
           </div>
@@ -51,7 +50,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </div>
         </div>
 
-        {/* Card */}
         <div className="w-full rounded-2xl border border-purple-100/70 bg-white/90 p-6 shadow-soft backdrop-blur">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -89,10 +87,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </div>
 
             {error && (
-              <div
-                role="alert"
-                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-              >
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {error}
               </div>
             )}
@@ -106,7 +101,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </button>
           </form>
 
-          {/* Hjälprad */}
           <div className="mt-4 space-y-1 text-center text-xs text-gray-500">
             <p>
               Standardkonto: <span className="font-medium text-gray-700">tom</span> /{" "}
@@ -116,8 +110,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               Inget konto?{" "}
               <Link to="/register" className="font-medium text-brand-700 hover:underline">
                 Skapa konto
-              </Link>{" "}
-              (kommer snart)
+              </Link>
             </p>
           </div>
         </div>

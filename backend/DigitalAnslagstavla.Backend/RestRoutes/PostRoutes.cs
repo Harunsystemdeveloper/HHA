@@ -78,6 +78,12 @@ public static class PostRoutes
                 contentItem.Owner = context.User?.Identity?.Name ?? "anonymous";
                 contentItem.Author = contentItem.Owner;
 
+                // ✅ säkerställ att contentType-part finns (för att undvika null när vi skriver fält)
+                if (contentItem.Content[contentType] == null)
+                {
+                    contentItem.Content[contentType] = new JObject();
+                }
+
                 // Build content directly into the content item
                 foreach (var kvp in body)
                 {
@@ -148,7 +154,8 @@ public static class PostRoutes
 
                         if (!string.IsNullOrWhiteSpace(idValue))
                         {
-                            contentItem.Content[contentType][fieldName]["ContentItemIds"] = new List<string> { idValue };
+                            contentItem.Content[contentType]![fieldName] = contentItem.Content[contentType]![fieldName] ?? new JObject();
+                            contentItem.Content[contentType]![fieldName]!["ContentItemIds"] = new List<string> { idValue };
                         }
 
                         continue;
@@ -163,17 +170,25 @@ public static class PostRoutes
 
                             // ✅ HtmlField-liknande fält: skriv till "Html" istället för "Text"
                             if (IsLikelyHtmlField(kvp.Key, pascalKey))
-                                contentItem.Content[contentType][pascalKey]["Html"] = str;
+                            {
+                                contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
+                                contentItem.Content[contentType]![pascalKey]!["Html"] = str;
+                            }
                             else
-                                contentItem.Content[contentType][pascalKey]["Text"] = str;
+                            {
+                                contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
+                                contentItem.Content[contentType]![pascalKey]!["Text"] = str;
+                            }
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Number)
                         {
-                            contentItem.Content[contentType][pascalKey]["Value"] = jsonElement.GetDouble();
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
+                            contentItem.Content[contentType]![pascalKey]!["Value"] = jsonElement.GetDouble();
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
                         {
-                            contentItem.Content[contentType][pascalKey]["Value"] = jsonElement.GetBoolean();
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
+                            contentItem.Content[contentType]![pascalKey]!["Value"] = jsonElement.GetBoolean();
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Object)
                         {
@@ -182,7 +197,7 @@ public static class PostRoutes
                             {
                                 obj[ToPascalCase(prop.Name)] = ConvertJsonElementToPascal(prop.Value);
                             }
-                            contentItem.Content[contentType][pascalKey] = obj;
+                            contentItem.Content[contentType]![pascalKey] = obj;
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Array)
                         {
@@ -199,14 +214,15 @@ public static class PostRoutes
                             var isContentItemIds = arrayData.Count > 0 &&
                                 arrayData.All(id => id.Length > 20 && id.All(c => char.IsLetterOrDigit(c)));
 
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
                             if (isContentItemIds)
-                                contentItem.Content[contentType][pascalKey]["ContentItemIds"] = arrayData;
+                                contentItem.Content[contentType]![pascalKey]!["ContentItemIds"] = arrayData;
                             else
-                                contentItem.Content[contentType][pascalKey]["Values"] = arrayData;
+                                contentItem.Content[contentType]![pascalKey]!["Values"] = arrayData;
                         }
                         else
                         {
-                            contentItem.Content[contentType][pascalKey] = ConvertJsonElement(jsonElement);
+                            contentItem.Content[contentType]![pascalKey] = ConvertJsonElement(jsonElement);
                         }
 
                         continue;
@@ -215,17 +231,18 @@ public static class PostRoutes
                     // Plain CLR types
                     if (value is string strValue)
                     {
+                        contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
                         if (IsLikelyHtmlField(kvp.Key, pascalKey))
-                            contentItem.Content[contentType][pascalKey]["Html"] = strValue;
+                            contentItem.Content[contentType]![pascalKey]!["Html"] = strValue;
                         else
-                            contentItem.Content[contentType][pascalKey]["Text"] = strValue;
+                            contentItem.Content[contentType]![pascalKey]!["Text"] = strValue;
 
                         continue;
                     }
 
                     if (value is int or long or double or float or decimal)
                     {
-                        contentItem.Content[contentType][pascalKey] = new JObject
+                        contentItem.Content[contentType]![pascalKey] = new JObject
                         {
                             ["Value"] = JToken.FromObject(value)
                         };
@@ -233,7 +250,7 @@ public static class PostRoutes
                     }
 
                     // Fallback
-                    contentItem.Content[contentType][pascalKey] = JToken.FromObject(value);
+                    contentItem.Content[contentType]![pascalKey] = JToken.FromObject(value);
                 }
 
                 await contentManager.CreateAsync(contentItem, VersionOptions.Published);
@@ -300,6 +317,11 @@ public static class PostRoutes
                 contentItem.Owner = context.User?.Identity?.Name ?? "anonymous";
                 contentItem.Author = contentItem.Owner;
 
+                if (contentItem.Content[contentType] == null)
+                {
+                    contentItem.Content[contentType] = new JObject();
+                }
+
                 foreach (var kvp in body)
                 {
                     if (RESERVED_FIELDS.Contains(kvp.Key))
@@ -308,7 +330,6 @@ public static class PostRoutes
                     var pascalKey = ToPascalCase(kvp.Key);
                     var value = kvp.Value;
 
-                    // ✅ SPECIAL: klienten skickar "html" -> Orchard HtmlBodyPart.Html
                     if (kvp.Key.Equals("html", StringComparison.OrdinalIgnoreCase))
                     {
                         string? htmlValue = value switch
@@ -367,7 +388,8 @@ public static class PostRoutes
 
                         if (!string.IsNullOrWhiteSpace(idValue))
                         {
-                            contentItem.Content[contentType][fieldName]["ContentItemIds"] = new List<string> { idValue };
+                            contentItem.Content[contentType]![fieldName] = contentItem.Content[contentType]![fieldName] ?? new JObject();
+                            contentItem.Content[contentType]![fieldName]!["ContentItemIds"] = new List<string> { idValue };
                         }
 
                         continue;
@@ -378,18 +400,22 @@ public static class PostRoutes
                         if (jsonElement.ValueKind == JsonValueKind.String)
                         {
                             var str = jsonElement.GetString();
+
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
                             if (IsLikelyHtmlField(kvp.Key, pascalKey))
-                                contentItem.Content[contentType][pascalKey]["Html"] = str;
+                                contentItem.Content[contentType]![pascalKey]!["Html"] = str;
                             else
-                                contentItem.Content[contentType][pascalKey]["Text"] = str;
+                                contentItem.Content[contentType]![pascalKey]!["Text"] = str;
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Number)
                         {
-                            contentItem.Content[contentType][pascalKey]["Value"] = jsonElement.GetDouble();
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
+                            contentItem.Content[contentType]![pascalKey]!["Value"] = jsonElement.GetDouble();
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
                         {
-                            contentItem.Content[contentType][pascalKey]["Value"] = jsonElement.GetBoolean();
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
+                            contentItem.Content[contentType]![pascalKey]!["Value"] = jsonElement.GetBoolean();
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Object)
                         {
@@ -398,7 +424,7 @@ public static class PostRoutes
                             {
                                 obj[ToPascalCase(prop.Name)] = ConvertJsonElementToPascal(prop.Value);
                             }
-                            contentItem.Content[contentType][pascalKey] = obj;
+                            contentItem.Content[contentType]![pascalKey] = obj;
                         }
                         else if (jsonElement.ValueKind == JsonValueKind.Array)
                         {
@@ -415,14 +441,15 @@ public static class PostRoutes
                             var isContentItemIds = arrayData.Count > 0 &&
                                 arrayData.All(id => id.Length > 20 && id.All(c => char.IsLetterOrDigit(c)));
 
+                            contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
                             if (isContentItemIds)
-                                contentItem.Content[contentType][pascalKey]["ContentItemIds"] = arrayData;
+                                contentItem.Content[contentType]![pascalKey]!["ContentItemIds"] = arrayData;
                             else
-                                contentItem.Content[contentType][pascalKey]["Values"] = arrayData;
+                                contentItem.Content[contentType]![pascalKey]!["Values"] = arrayData;
                         }
                         else
                         {
-                            contentItem.Content[contentType][pascalKey] = ConvertJsonElement(jsonElement);
+                            contentItem.Content[contentType]![pascalKey] = ConvertJsonElement(jsonElement);
                         }
 
                         continue;
@@ -430,24 +457,25 @@ public static class PostRoutes
 
                     if (value is string strValue)
                     {
+                        contentItem.Content[contentType]![pascalKey] = contentItem.Content[contentType]![pascalKey] ?? new JObject();
                         if (IsLikelyHtmlField(kvp.Key, pascalKey))
-                            contentItem.Content[contentType][pascalKey]["Html"] = strValue;
+                            contentItem.Content[contentType]![pascalKey]!["Html"] = strValue;
                         else
-                            contentItem.Content[contentType][pascalKey]["Text"] = strValue;
+                            contentItem.Content[contentType]![pascalKey]!["Text"] = strValue;
 
                         continue;
                     }
 
                     if (value is int or long or double or float or decimal)
                     {
-                        contentItem.Content[contentType][pascalKey] = new JObject
+                        contentItem.Content[contentType]![pascalKey] = new JObject
                         {
                             ["Value"] = JToken.FromObject(value)
                         };
                         continue;
                     }
 
-                    contentItem.Content[contentType][pascalKey] = JToken.FromObject(value);
+                    contentItem.Content[contentType]![pascalKey] = JToken.FromObject(value);
                 }
 
                 await contentManager.CreateAsync(contentItem, VersionOptions.Published);

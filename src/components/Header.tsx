@@ -1,11 +1,30 @@
-import { Link, NavLink } from "react-router-dom";
-import useCurrentUser from "../hooks/useCurrentUser";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import type { CurrentUser } from "../api/auth";
 import { logout } from "../api/auth";
 
-export default function Header() {
-  const { user } = useCurrentUser();
-  const isAuth = !!user?.isAuthenticated;
-  const isAdmin = Array.isArray(user?.roles) && user.roles.includes("Admin");
+type HeaderProps = {
+  currentUser: CurrentUser;
+  setCurrentUser: React.Dispatch<React.SetStateAction<CurrentUser>>;
+  isAuthLoading: boolean;
+};
+
+const anonymousUser: CurrentUser = {
+  isAuthenticated: false,
+  username: null,
+  roles: ["Anonymous"],
+};
+
+export default function Header({ currentUser, setCurrentUser, isAuthLoading }: HeaderProps) {
+  const navigate = useNavigate();
+
+  const isAuth = !!currentUser?.isAuthenticated;
+
+  const isAdmin =
+    Array.isArray(currentUser?.roles) &&
+    currentUser.roles.some((r) => {
+      const rr = String(r).toLowerCase();
+      return rr === "administrator" || rr === "admin";
+    });
 
   return (
     <header className="sticky top-0 z-10 border-b border-purple-100/60 bg-white/70 backdrop-blur">
@@ -23,9 +42,7 @@ export default function Header() {
             </svg>
           </div>
           <div className="leading-tight">
-            <div className="text-lg font-semibold text-gray-900">
-              Digital Anslagstavla
-            </div>
+            <div className="text-lg font-semibold text-gray-900">Digital Anslagstavla</div>
             <div className="text-sm text-gray-600">Din lokala community ✨</div>
           </div>
         </Link>
@@ -37,9 +54,7 @@ export default function Header() {
             end
             className={({ isActive }) =>
               "rounded-lg px-3 py-2 text-sm " +
-              (isActive
-                ? "bg-brand-600 text-white"
-                : "text-gray-700 hover:bg-gray-100")
+              (isActive ? "bg-brand-600 text-white" : "text-gray-700 hover:bg-gray-100")
             }
           >
             Hem
@@ -51,9 +66,7 @@ export default function Header() {
                 to="/create"
                 className={({ isActive }) =>
                   "rounded-lg px-3 py-2 text-sm " +
-                  (isActive
-                    ? "bg-brand-600 text-white"
-                    : "text-gray-700 hover:bg-gray-100")
+                  (isActive ? "bg-brand-600 text-white" : "text-gray-700 hover:bg-gray-100")
                 }
               >
                 Skapa inlägg
@@ -63,9 +76,7 @@ export default function Header() {
                 to="/my-posts"
                 className={({ isActive }) =>
                   "rounded-lg px-3 py-2 text-sm " +
-                  (isActive
-                    ? "bg-brand-600 text-white"
-                    : "text-gray-700 hover:bg-gray-100")
+                  (isActive ? "bg-brand-600 text-white" : "text-gray-700 hover:bg-gray-100")
                 }
               >
                 Mina inlägg
@@ -78,9 +89,7 @@ export default function Header() {
               to="/admin"
               className={({ isActive }) =>
                 "rounded-lg px-3 py-2 text-sm " +
-                (isActive
-                  ? "bg-brand-600 text-white"
-                  : "text-gray-700 hover:bg-gray-100")
+                (isActive ? "bg-brand-600 text-white" : "text-gray-700 hover:bg-gray-100")
               }
             >
               Admin
@@ -90,16 +99,22 @@ export default function Header() {
 
         {/* Auth / Actions */}
         <div className="flex items-center gap-2">
-          {isAuth ? (
+          {isAuthLoading ? (
+            <span className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
+              Laddar...
+            </span>
+          ) : isAuth ? (
             <>
               <span className="hidden sm:inline rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
-                Inloggad som <strong>{user?.username ?? "Användare"}</strong>
+                Inloggad som <strong>{currentUser?.username ?? "Användare"}</strong>
                 {isAdmin ? " · Admin" : ""}
               </span>
+
               <button
                 onClick={async () => {
                   await logout();
-                  window.location.replace("/");
+                  setCurrentUser(anonymousUser);
+                  navigate("/", { replace: true });
                 }}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-100"
               >

@@ -1,33 +1,33 @@
-// src/api/auth.ts
-
 export type CurrentUser = {
   isAuthenticated: boolean;
   username: string | null;
   roles: string[];
 };
 
+async function readJsonSafe(res: Response): Promise<any | null> {
+  try {
+    const text = await res.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  } catch {
+    return null;
+  }
+}
+
 async function okOrThrow(res: Response) {
   if (res.ok) return res;
 
-  let message = `${res.status} ${res.statusText}`;
-
-  try {
-    const text = await res.text();
-    if (text) {
-      try {
-        const data = JSON.parse(text);
-        message =
-          data?.error ||
-          data?.message ||
-          (data?.details ? JSON.stringify(data.details) : "") ||
-          JSON.stringify(data);
-      } catch {
-        message = text; // plain text
-      }
-    }
-  } catch {
-    // ignore
-  }
+  const data = await readJsonSafe(res);
+  const message =
+    data?.error ||
+    data?.message ||
+    (data?.details ? JSON.stringify(data.details) : "") ||
+    (data ? JSON.stringify(data) : "") ||
+    `${res.status} ${res.statusText}`;
 
   throw new Error(message);
 }
@@ -46,31 +46,51 @@ function toE164Sweden(input: string) {
 }
 
 export async function login(usernameOrEmail: string, password: string) {
-  await fetch("/api/auth/login", {
+  const res = await fetch("/api/auth/login", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ usernameOrEmail, password }),
-  }).then(okOrThrow);
+  });
+
+  await okOrThrow(res);
+  // Backend returnerar user-info direkt, men vi behöver inte lita på den här.
+  return true;
 }
 
 export async function logout() {
-  await fetch("/api/auth/login", {
+  const res = await fetch("/api/auth/login", {
     method: "DELETE",
     credentials: "include",
-  }).then(okOrThrow);
+  });
+
+  await okOrThrow(res);
+  return true;
 }
 
 export async function getCurrentUser(): Promise<CurrentUser> {
   try {
     const res = await fetch("/api/auth/login", { credentials: "include" });
+
+    // ✅ Backend svarar alltid 200 med isAuthenticated true/false
     if (!res.ok) {
       return { isAuthenticated: false, username: null, roles: ["Anonymous"] };
     }
 
-    const data = await res.json();
-    const name = (data?.username ?? data?.userName ?? null) as string | null;
-    const roles: string[] = Array.isArray(data?.roles) ? data.roles : [];
+    const data = await readJsonSafe(res);
+
+    // ✅ Om backend säger utloggad
+    if (data?.isAuthenticated === false) {
+      return { isAuthenticated: false, username: null, roles: ["Anonymous"] };
+    }
+
+    const name =
+      (data?.username ?? data?.userName ?? data?.UserName ?? null) as
+      | string
+      | null;
+
+    const rolesRaw = data?.roles ?? data?.Roles ?? [];
+    const roles = Array.isArray(rolesRaw) ? rolesRaw.map((r: any) => String(r)) : [];
 
     return {
       isAuthenticated: true,
@@ -83,7 +103,6 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 }
 
 /**
- * Registrera ny användare (matchar backend RegisterRequest)
  * Backend: RegisterRequest(string Username, string Email, string Password, string? FirstName, string? LastName, string? Phone)
  */
 export async function register(
@@ -94,28 +113,31 @@ export async function register(
 ) {
   const phone = toE164Sweden(phoneNumber);
 
+  const payload = {
+    Username: username,
+    Email: email,
+    Password: password,
+    Phone: phone,
+    FirstName: "",
+    LastName: "",
+
+    // fallback if binder expects camelCase
+    username,
+    email,
+    password,
+    phone,
+    firstName: "",
+    lastName: "",
+  };
+
   const res = await fetch("/api/auth/register", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-
-    // Jag skickar med exakt samma property names som i C# recorden (snyggare för felsökning)
-    body: JSON.stringify({
-      Username: username,
-      Email: email,
-      Password: password,
-      Phone: phone, // null om tom
-      FirstName: "",
-      LastName: "",
-    }),
+    body: JSON.stringify(payload),
   });
 
   await okOrThrow(res);
-
-  // Returnera svar (bra för debug)
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
+  const data = await readJsonSafe(res);
+  return data;
 }

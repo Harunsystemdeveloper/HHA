@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { register as apiRegister } from "../api/auth"; // ✅ ändrat från ../utils/auth
+import { register as apiRegister } from "../api/auth";
 
 export default function Register() {
   const [userName, setUserName] = useState("");
@@ -23,7 +23,13 @@ export default function Register() {
       setOk("Konto skapat! Du kan nu logga in.");
       setTimeout(() => navigate("/login", { replace: true }), 1000);
     } catch (err: any) {
-      setError(err.message || "Kunde inte skapa konto.");
+      // ✅ Visa riktiga backend-felet om möjligt
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Kunde inte skapa konto.";
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -47,7 +53,7 @@ export default function Register() {
         <div className="w-full rounded-2xl border border-purple-100/70 bg-white/90 p-6 shadow-soft backdrop-blur">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-800 mb-1">Användarnamn</label>
+              <label className="mb-1 block text-sm font-medium text-gray-800">Användarnamn</label>
               <input
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
@@ -58,7 +64,7 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-800 mb-1">E-post</label>
+              <label className="mb-1 block text-sm font-medium text-gray-800">E-post</label>
               <input
                 type="email"
                 value={email}
@@ -70,7 +76,7 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-800 mb-1">Mobilnummer</label>
+              <label className="mb-1 block text-sm font-medium text-gray-800">Mobilnummer</label>
               <input
                 type="tel"
                 value={phoneNumber}
@@ -82,7 +88,7 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-800 mb-1">Lösenord</label>
+              <label className="mb-1 block text-sm font-medium text-gray-800">Lösenord</label>
               <input
                 type="password"
                 value={password}
@@ -93,8 +99,8 @@ export default function Register() {
               />
             </div>
 
-            {error && <div className="text-red-600 text-sm">{error}</div>}
-            {ok && <div className="text-green-600 text-sm">{ok}</div>}
+            {error && <div className="text-sm text-red-600">{error}</div>}
+            {ok && <div className="text-sm text-green-600">{ok}</div>}
 
             <button
               type="submit"

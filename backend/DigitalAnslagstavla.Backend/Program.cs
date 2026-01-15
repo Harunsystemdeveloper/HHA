@@ -6,20 +6,20 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseNLogHost();
 
-// Orchard
 builder.Services.AddOrchardCms();
 
-// ✅ FIX: krävs eftersom du kör app.UseAuthorization()
+// ✅ FIX: endast AddAuthorization behövs här
+// (Orchard sätter upp sin auth, vi behöver bara policies/authorization när vi kör app.UseAuthorization())
 builder.Services.AddAuthorization();
 
-// DEV cookies
+// ✅ DEV cookies
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.SecurePolicy = CookieSecurePolicy.None;
     options.Cookie.SameSite = SameSiteMode.Lax;
 });
 
-// CORS (Vite / React)
+// ✅ CORS för Vite (cookies)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("React", policy =>
@@ -37,49 +37,35 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// ❌ Ingen https-redirect i dev
+// ✅ Kör INTE https-redirection i dev
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
 
 app.UseStaticFiles();
+
 app.UseRouting();
 app.UseCors("React");
 
-// Auth (krävs för Orchard Users)
+// ✅ Auth middleware (Orchard registrerar auth-scheman, men pipelinen behövs här)
 app.UseAuthentication();
 app.UseAuthorization();
 
-
-// ===============================
-// ✅ API – MÅSTE ligga FÖRE ORCHARD
-// ===============================
-
-// Test
+// ✅ Test-endpoint (ska funka direkt)
 app.MapGet("/api/ping", () => Results.Ok(new { ok = true }));
 
-// ✅ Fix: anropa extension-metoden direkt (ingen klassreferens behövs)
+// ✅ Mappar ALLA dina REST routes (GET/POST/PUT/DELETE + auth + media + system)
 app.MapRestRoutes();
 
-// JSON-404 för API (inte Orchard HTML)
+// ✅ Om någon /api/* inte matchar: returnera JSON 404 (inte Orchard HTML)
 app.MapFallback("/api/{**path}", (HttpContext ctx) =>
 {
     ctx.Response.StatusCode = 404;
-    ctx.Response.ContentType = "application/json";
-    return ctx.Response.WriteAsync(
-        System.Text.Json.JsonSerializer.Serialize(new
-        {
-            error = "API route not found",
-            path = ctx.Request.Path.ToString()
-        })
-    );
+    return Results.Json(new { error = "API route not found", path = ctx.Request.Path.ToString() });
 });
 
-
-// ===============================
-// ✅ ORCHARD SIST – ALLTID
-// ===============================
+// ✅ Orchard sist (VIKTIGT!)
 app.UseOrchardCore();
 
 app.Run();

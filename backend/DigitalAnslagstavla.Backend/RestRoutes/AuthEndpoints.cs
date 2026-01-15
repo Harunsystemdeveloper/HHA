@@ -10,14 +10,14 @@ using System.Text.Json.Nodes;
 
 public static class AuthEndpoints
 {
-    // ✅ Din befintliga metod (oförändrad)
     public static void MapAuthEndpoints(this WebApplication app)
     {
-        // POST /api/auth/register - Register new user
+        // POST /api/auth/register
         app.MapPost("/api/auth/register", async (
             [FromBody] RegisterRequest request,
             [FromServices] IUserService userService,
-            [FromServices] UserManager<IUser> userManager) =>
+            [FromServices] UserManager<IUser> userManager
+        ) =>
         {
             if (string.IsNullOrWhiteSpace(request.Username) ||
                 string.IsNullOrWhiteSpace(request.Password))
@@ -25,9 +25,7 @@ public static class AuthEndpoints
                 return Results.BadRequest(new { error = "Username and password required" });
             }
 
-            // Orchard (Admin UI) kräver ofta E.164-format för telefon: +467...
             var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone;
-
             var errors = new Dictionary<string, string>();
 
             var user = await userService.CreateUserAsync(
@@ -56,15 +54,25 @@ public static class AuthEndpoints
                 });
             }
 
-            // Assign role (Customer måste finnas i Orchard -> Security -> Roles)
-            var roleResult = await userManager.AddToRoleAsync(user, "Customer");
-            if (!roleResult.Succeeded)
+            const string desiredRole = "Customer";
+            bool roleAssigned = false;
+            List<string> roleErrors = new();
+
+            try
             {
-                return Results.BadRequest(new
+                var roleResult = await userManager.AddToRoleAsync(user, desiredRole);
+                if (!roleResult.Succeeded)
                 {
-                    error = "User created but role assignment failed",
-                    details = roleResult.Errors.Select(e => e.Description).ToList()
-                });
+                    roleErrors.AddRange(roleResult.Errors.Select(e => e.Description));
+                }
+                else
+                {
+                    roleAssigned = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                roleErrors.Add($"Role assignment exception: {ex.Message}");
             }
 
             return Results.Ok(new
@@ -74,15 +82,18 @@ public static class AuthEndpoints
                 firstName = request.FirstName,
                 lastName = request.LastName,
                 phone = phone,
-                role = "Customer",
-                message = "User created successfully"
+                role = desiredRole,
+                roleAssigned = roleAssigned,
+                roleErrors = roleErrors,
+                message = roleAssigned
+                    ? "User created successfully (role assigned)"
+                    : "User created successfully (role not assigned)"
             });
         })
         .AllowAnonymous()
         .DisableAntiforgery();
 
-        // ✅ FIX: Läs request body manuellt (undviker binding-problem)
-        // POST /api/auth/login - Login with username OR email
+        // POST /api/auth/login
         app.MapPost("/api/auth/login", async (
             HttpContext context,
             [FromServices] SignInManager<IUser> signInManager,
@@ -118,10 +129,11 @@ public static class AuthEndpoints
             }
 
             var roles = await userManager.GetRolesAsync(user);
-
             var u = user as User;
+
             return Results.Ok(new
             {
+                isAuthenticated = true,
                 username = user.UserName,
                 email = u?.Email,
                 phoneNumber = u?.PhoneNumber,
@@ -133,7 +145,7 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .DisableAntiforgery();
 
-        // GET /api/auth/login - Get current user
+        // ✅ FIX: GET /api/auth/login ska INTE ge 401 när man är utloggad
         app.MapGet("/api/auth/login", async (
             HttpContext context,
             [FromServices] UserManager<IUser> userManager) =>
@@ -142,14 +154,20 @@ public static class AuthEndpoints
 
             if (user == null)
             {
-                return Results.Unauthorized();
+                return Results.Ok(new
+                {
+                    isAuthenticated = false,
+                    username = (string?)null,
+                    roles = new[] { "Anonymous" }
+                });
             }
 
             var roles = await userManager.GetRolesAsync(user);
-
             var u = user as User;
+
             return Results.Ok(new
             {
+                isAuthenticated = true,
                 username = user.UserName,
                 email = u?.Email,
                 phoneNumber = u?.PhoneNumber,
@@ -157,9 +175,10 @@ public static class AuthEndpoints
                 lastName = u?.Properties?["LastName"]?.ToString(),
                 roles = roles.ToList()
             });
-        });
+        })
+        .AllowAnonymous();
 
-        // DELETE /api/auth/login - Logout
+        // DELETE /api/auth/login
         app.MapDelete("/api/auth/login", async (
             [FromServices] SignInManager<IUser> signInManager) =>
         {
@@ -170,13 +189,14 @@ public static class AuthEndpoints
         .DisableAntiforgery();
     }
 
-    // ✅ NY overload: samma routes men kan mappas via endpoints.MapAuthEndpoints()
+    // ✅ Overload: endpoints.MapAuthEndpoints()
     public static void MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/auth/register", async (
             [FromBody] RegisterRequest request,
             [FromServices] IUserService userService,
-            [FromServices] UserManager<IUser> userManager) =>
+            [FromServices] UserManager<IUser> userManager
+        ) =>
         {
             if (string.IsNullOrWhiteSpace(request.Username) ||
                 string.IsNullOrWhiteSpace(request.Password))
@@ -209,14 +229,21 @@ public static class AuthEndpoints
                 return Results.BadRequest(new { error = "Registration failed", details = errors });
             }
 
-            var roleResult = await userManager.AddToRoleAsync(user, "Customer");
-            if (!roleResult.Succeeded)
+            const string desiredRole = "Customer";
+            bool roleAssigned = false;
+            List<string> roleErrors = new();
+
+            try
             {
-                return Results.BadRequest(new
-                {
-                    error = "User created but role assignment failed",
-                    details = roleResult.Errors.Select(e => e.Description).ToList()
-                });
+                var roleResult = await userManager.AddToRoleAsync(user, desiredRole);
+                if (!roleResult.Succeeded)
+                    roleErrors.AddRange(roleResult.Errors.Select(e => e.Description));
+                else
+                    roleAssigned = true;
+            }
+            catch (Exception ex)
+            {
+                roleErrors.Add($"Role assignment exception: {ex.Message}");
             }
 
             return Results.Ok(new
@@ -226,14 +253,17 @@ public static class AuthEndpoints
                 firstName = request.FirstName,
                 lastName = request.LastName,
                 phone = phone,
-                role = "Customer",
-                message = "User created successfully"
+                role = desiredRole,
+                roleAssigned = roleAssigned,
+                roleErrors = roleErrors,
+                message = roleAssigned
+                    ? "User created successfully (role assigned)"
+                    : "User created successfully (role not assigned)"
             });
         })
         .AllowAnonymous()
         .DisableAntiforgery();
 
-        // ✅ FIX: Läs request body manuellt (undviker binding-problem)
         endpoints.MapPost("/api/auth/login", async (
             HttpContext context,
             [FromServices] SignInManager<IUser> signInManager,
@@ -267,6 +297,7 @@ public static class AuthEndpoints
 
             return Results.Ok(new
             {
+                isAuthenticated = true,
                 username = user.UserName,
                 email = u?.Email,
                 phoneNumber = u?.PhoneNumber,
@@ -278,18 +309,29 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .DisableAntiforgery();
 
+        // ✅ FIX: även här – returnera 200 istället för 401 när utloggad
         endpoints.MapGet("/api/auth/login", async (
             HttpContext context,
             [FromServices] UserManager<IUser> userManager) =>
         {
             var user = await userManager.GetUserAsync(context.User);
-            if (user == null) return Results.Unauthorized();
+
+            if (user == null)
+            {
+                return Results.Ok(new
+                {
+                    isAuthenticated = false,
+                    username = (string?)null,
+                    roles = new[] { "Anonymous" }
+                });
+            }
 
             var roles = await userManager.GetRolesAsync(user);
             var u = user as User;
 
             return Results.Ok(new
             {
+                isAuthenticated = true,
                 username = user.UserName,
                 email = u?.Email,
                 phoneNumber = u?.PhoneNumber,
@@ -297,7 +339,8 @@ public static class AuthEndpoints
                 lastName = u?.Properties?["LastName"]?.ToString(),
                 roles = roles.ToList()
             });
-        });
+        })
+        .AllowAnonymous();
 
         endpoints.MapDelete("/api/auth/login", async (
             [FromServices] SignInManager<IUser> signInManager) =>

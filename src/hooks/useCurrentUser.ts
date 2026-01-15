@@ -1,69 +1,51 @@
-import { useEffect, useState } from "react";
-import { getCurrentUser, type CurrentUser } from "../api/auth";
+import { useEffect, useRef, useState } from "react";
+import { getCurrentUser, logout as apiLogout, type CurrentUser } from "../api/auth";
 
-/**
- * Hanterar nuvarande användare baserat på ditt auth-API.
- * 
- * CurrentUser från ../api/auth förväntas se ut så här:
- * {
- *   isAuthenticated: boolean;
- *   username: string | null;
- *   roles: string[]; // t.ex. ["Anonymous"], ["User"], ["Admin"]
- * }
- */
+const ANON: CurrentUser = {
+  isAuthenticated: false,
+  username: null,
+  roles: ["Anonymous"],
+};
 
 export default function useCurrentUser() {
-  const [user, setUser] = useState<CurrentUser>({
-    isAuthenticated: false,
-    username: null,
-    roles: ["Anonymous"],
-  });
-
+  const [user, setUser] = useState<CurrentUser>(ANON);
   const [loading, setLoading] = useState(true);
 
+  // ✅ riktig mounted-guard
+  const mountedRef = useRef(true);
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const currentUser = await getCurrentUser();
+      if (mountedRef.current) setUser(currentUser);
+    } catch {
+      if (mountedRef.current) setUser(ANON);
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    let mounted = true;
-
-    const fetchUser = async () => {
-      try {
-        setLoading(true);
-        const currentUser = await getCurrentUser();
-        if (mounted && currentUser) {
-          setUser(currentUser);
-        }
-      } catch (error) {
-        console.error("Fel vid hämtning av användare:", error);
-        if (mounted) {
-          setUser({
-            isAuthenticated: false,
-            username: null,
-            roles: ["Anonymous"],
-          });
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    fetchUser();
-
+    mountedRef.current = true;
+    refresh();
     return () => {
-      mounted = false;
+      mountedRef.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Funktion för att logga ut användaren lokalt.
-   * (När vi senare lägger till backend-logout så anropas den härifrån.)
-   */
-  const logout = () => {
-    localStorage.removeItem("auth_token"); // eller anpassa efter din auth-struktur
-    setUser({
-      isAuthenticated: false,
-      username: null,
-      roles: ["Anonymous"],
-    });
+  const logout = async () => {
+    try {
+      await apiLogout();
+    } catch {
+      // även om logout misslyckas: nolla UI så användaren inte fastnar
+    } finally {
+      // ✅ direkt nolla + refresh för att synca med cookie/server
+      if (mountedRef.current) setUser(ANON);
+      await refresh();
+    }
   };
 
-  return { user, loading, logout };
+  return { user, loading, logout, refresh };
 }
