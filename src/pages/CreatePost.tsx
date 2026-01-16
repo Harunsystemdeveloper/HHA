@@ -4,13 +4,18 @@ import { createPost } from "../api/posts";
 import { CATEGORIES, type CreatePostInput } from "../types";
 import useCurrentUser from "../hooks/useCurrentUser";
 
+const TITLE_DESC_SPLIT = "|||"; // ✅ används för HtmlDashboardWidget
+
 export default function CreatePost() {
   const navigate = useNavigate();
   const { user } = useCurrentUser();
 
   const contentType = (import.meta as any).env?.VITE_CONTENT_TYPE || "Post";
 
-  const contentTypeLower = useMemo(() => String(contentType ?? "").toLowerCase(), [contentType]);
+  const contentTypeLower = useMemo(
+    () => String(contentType ?? "").toLowerCase(),
+    [contentType]
+  );
   const isPet = contentTypeLower === "pet";
   const isHtmlWidget = contentTypeLower === "htmldashboardwidget";
 
@@ -40,44 +45,46 @@ export default function CreatePost() {
         localStorage.getItem("da_authorName") ||
         "Anonym";
 
-      // ✅ se till att kategori alltid finns (för filter/UI)
+      // ✅ se till att kategori alltid finns
       const effectiveCategory = (form.category?.toString().trim() || "Övrigt") as string;
 
-      // spara lokalt (för MyPosts-filter)
+      // spara lokalt
       try {
         localStorage.setItem("da_authorName", effectiveAuthor);
       } catch { }
+
+      const safeTitle = form.title?.trim() || "Untitled";
+      const safeDesc = (form.description ?? "").toString().trim();
 
       let payload: any = { ...form };
 
       // ✅ PET-logik (behåll)
       if (isPet) {
-        payload = { title: form.title, species: effectiveCategory };
+        payload = { title: safeTitle, species: effectiveCategory };
       } else if (isHtmlWidget) {
-        // ✅ HtmlDashboardWidget: bädda in meta så du alltid kan visa/filtera
-        const safeTitle = form.title?.trim() || "Untitled";
-        const safeDesc = form.description?.trim() || "";
+        /**
+         * ✅ HtmlDashboardWidget accepterar ENDAST:
+         * authorName, category, id, title
+         *
+         * Så vi packar beskrivningen i title:
+         * "Titel|||Beskrivning"
+         */
+        const packedTitle = safeDesc ? `${safeTitle}${TITLE_DESC_SPLIT}${safeDesc}` : safeTitle;
 
         payload = {
-          title: safeTitle,
-
-          // försök även skicka "category/authorName" (om contentType har fälten)
-          // FieldValidator/RESERVED_FIELDS avgör om det accepteras.
-          category: effectiveCategory,
-          authorName: effectiveAuthor,
-
-          html: `
-            <div data-category="${effectiveCategory}" data-author="${effectiveAuthor}">
-              <h2>${safeTitle}</h2>
-              ${safeDesc ? `<p>${safeDesc}</p>` : `<p>Ingen beskrivning</p>`}
-              <p><small>Kategori: ${effectiveCategory} • Skapad av: ${effectiveAuthor}</small></p>
-            </div>
-          `.trim(),
+          id: crypto.randomUUID?.() ?? String(Date.now()), // ✅ tillåten
+          title: packedTitle, // ✅ tillåten
+          category: effectiveCategory, // ✅ tillåten
+          authorName: effectiveAuthor, // ✅ tillåten
         };
       } else {
-        // ✅ vanliga posts: skicka fälten normalt
-        payload.category = effectiveCategory;
-        payload.authorName = effectiveAuthor;
+        // ✅ vanliga Post: skicka fälten normalt
+        payload = {
+          ...form,
+          title: safeTitle,
+          category: effectiveCategory,
+          authorName: effectiveAuthor,
+        };
       }
 
       await createPost(payload);
@@ -134,9 +141,10 @@ export default function CreatePost() {
           />
         </div>
 
-        {/* ✅ kategori ska ALLTID finnas */}
         <div>
-          <label className="block text-sm font-medium text-gray-700">{isPet ? "Art (species)" : "Kategori"}</label>
+          <label className="block text-sm font-medium text-gray-700">
+            {isPet ? "Art (species)" : "Kategori"}
+          </label>
           <select
             className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
             value={String(form.category ?? "Övrigt")}
@@ -150,7 +158,6 @@ export default function CreatePost() {
           </select>
         </div>
 
-        {/* beskrivning */}
         {!isPet && (
           <div>
             <label className="block text-sm font-medium text-gray-700">Beskrivning</label>
@@ -161,10 +168,14 @@ export default function CreatePost() {
               value={form.description ?? ""}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
+            {isHtmlWidget && (
+              <div className="mt-1 text-xs text-gray-500">
+                (Obs: HtmlDashboardWidget sparar beskrivningen inuti titeln för att backend bara tillåter title/category/authorName/id.)
+              </div>
+            )}
           </div>
         )}
 
-        {/* Bild URL bara för vanliga Post */}
         {!isPet && !isHtmlWidget && (
           <div>
             <label className="block text-sm font-medium text-gray-700">Bild-URL (valfritt)</label>
