@@ -21,27 +21,7 @@ public static class PermissionsACL
         }
 
         // ============================
-        // ✅ FIX 0.5: Inloggade får skapa inlägg (POST) för utvalda content types
-        // ============================
-        // Löser 403 på POST /api/Post och/eller POST /api/HtmlDashboardWidget för vanliga users.
-        // Vi öppnar INTE för Anonymous och INTE för PUT/DELETE.
-        if (context.User.Identity?.IsAuthenticated == true && requestMethod == "POST")
-        {
-            var allowedCreateTypes = new[]
-            {
-                "Post",
-                "HtmlDashboardWidget",
-                "Pet"
-            };
-
-            if (allowedCreateTypes.Any(t => string.Equals(t, contentType, StringComparison.OrdinalIgnoreCase)))
-            {
-                return null; // Permission granted
-            }
-        }
-
-        // ============================
-        // ✅ FIX 1: Admin bypass
+        // ✅ FIX 1: Admin bypass (Administrator)
         // ============================
         if (context.User.Identity?.IsAuthenticated == true)
         {
@@ -49,6 +29,32 @@ public static class PermissionsACL
                 string.Equals(r.Value, "Administrator", StringComparison.OrdinalIgnoreCase));
 
             if (isAdmin)
+            {
+                return null; // Permission granted
+            }
+        }
+
+        // ============================
+        // ✅ FIX 0.5: Inloggade får skapa/redigera/ta bort inlägg för utvalda content types
+        // ============================
+        // Löser 403 på:
+        // - POST /api/Post
+        // - DELETE /api/Post/{id}
+        // - PUT /api/Post/{id} (om ni använder edit)
+        // - samma för HtmlDashboardWidget
+        // Vi öppnar INTE för Anonymous och INTE för andra content types.
+        if (context.User.Identity?.IsAuthenticated == true)
+        {
+            var allowedPostTypes = new[]
+            {
+                "Post",
+                "HtmlDashboardWidget"
+            };
+
+            var isAllowedType = allowedPostTypes.Any(t =>
+                string.Equals(t, contentType, StringComparison.OrdinalIgnoreCase));
+
+            if (isAllowedType && (requestMethod == "POST" || requestMethod == "PUT" || requestMethod == "DELETE"))
             {
                 return null; // Permission granted
             }
